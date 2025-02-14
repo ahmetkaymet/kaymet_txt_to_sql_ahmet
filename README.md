@@ -37,7 +37,7 @@ Example request:
 Example response:
 ```json
 {
-    "query": "SELECT * FROM Products WHERE Category1 = 'women'"
+    "query": "SELECT * FROM Products WHERE Category1 = 'Women'"
 }
 ```
 
