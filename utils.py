@@ -82,7 +82,7 @@ def generate_sql_query(natural_query: str) -> str:
                     1. Products:
                         - ProductID(PK)
                         - Name
-                        - Category1(kids,men,women)
+                        - Category1(Kids,Men,Women) give attention to letter case
                         - Category2
                     
                     2. Transactions:
