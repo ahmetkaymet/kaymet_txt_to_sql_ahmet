@@ -77,9 +77,7 @@ def generate_sql_query(natural_query: str) -> str:
             model="gpt-4o",
             messages=[
                 {"role": "system", "content": """
-                You are a SQL query converter. The database has the following tables:
-                  
-                    
+                You are a SQL query converter.
                 Create queries according to this schema and use exact table/column names.
                 Case sensitivity in requests doesn't matter.
                 Please return only the SQL query, no additional explanations.
