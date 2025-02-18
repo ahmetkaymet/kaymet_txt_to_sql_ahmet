@@ -74,28 +74,11 @@ def generate_sql_query(natural_query: str) -> str:
         """
 
         response = client.chat.completions.create(
-            model="gpt-4",
+            model="gpt-4o",
             messages=[
                 {"role": "system", "content": """
                 You are a SQL query converter. The database has the following tables:
-                    
-                    1. Products:
-                        - ProductID(PK)
-                        - Name
-                        - Category1(Kids,Men,Women) give attention to letter case
-                        - Category2
-                    
-                    2. Transactions:
-                        - StoreID(PK)
-                        - ProductID(FK)
-                        - Quantity
-                        - PricePerQuantity
-                        - Timestamp(Format: YYYY-MM-DD-HH-MM-SS)
-                    
-                    3. Stores:
-                        - StoreID(PK, Store IDs always start with 'STO'. If user provides only numbers, prepend 'STO')
-                        - State(Uses state abbreviations. If full state name is provided, use its abbreviation)
-                        - ZipCode
+                  
                     
                 Create queries according to this schema and use exact table/column names.
                 Case sensitivity in requests doesn't matter.

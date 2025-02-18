@@ -1,0 +1,1 @@
+Veritabanı komutları: 1) sqlite3 data.db 2) SELECT * FROM table_column_descriptions; 3) SELECT * FROM table_column_descriptions WHERE table_name = "Products"; 4) SELECT * FROM table_column_descriptions WHERE description LIKE "PK%"; 5) SELECT * FROM table_column_descriptions WHERE description LIKE "FK%";
