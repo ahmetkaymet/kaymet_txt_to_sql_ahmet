@@ -81,26 +81,28 @@ def generate_sql_query(natural_query: str) -> str:
 
 def execute_sql_query(query: str) -> List[Dict[str, Any]]:
     """
-    Execute SQL query and return results
+    Execute SQL query and return results. Only allows SELECT queries.
     Args:
-        query: SQL query string to execute
+        query: SQL query string to execute (must be a SELECT query)
     Returns:
         List of dictionaries containing query results
+    Raises:
+        ValueError: If query is not a SELECT query
     """
+    # Check if query is read-only (SELECT only)
+    if not query.strip().upper().startswith("SELECT"):
+        raise ValueError("Only SELECT queries are allowed for security reasons")
+
     with get_db_connection() as conn:
         cursor = conn.cursor()
         cursor.execute(query)
-
-        if cursor.description is None:  # For non-SELECT queries
-            conn.commit()
-            return []
-
+        
         columns = [description[0] for description in cursor.description]
         results = cursor.fetchall()
-
+        
         if not results:  # For empty results
             return []
-
+        
         formatted_results = [{columns[i]: value for i, value in enumerate(row)} for row in results]
-
+        
         return formatted_results
