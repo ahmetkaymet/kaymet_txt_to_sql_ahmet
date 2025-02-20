@@ -47,25 +47,35 @@ def get_db_schema() -> str:
 
 def generate_sql_query(natural_query: str) -> str:
     """
-    Convert natural language query to SQL
+    Convert natural language query to SQL. Only generates SELECT queries.
     Args:
         natural_query: Natural language query string
     Returns:
-        Generated SQL query string
+        Generated SQL query string (SELECT only)
+    Raises:
+        ValueError: If the generated query is not a SELECT query
     """
     schema = get_db_schema()
     prompt = f"Database Schema:\n{schema}\n\nUser Query:\n{natural_query}"
 
     system_content = (
-        "You are a SQL query converter.\n"
+        "You are a SQL query converter that ONLY generates SELECT queries.\n"
         "Create queries according to this schema and use exact table/column names.\n"
         "Case sensitivity in requests doesn't matter.\n"
         "Please return only the SQL query, no additional explanations.\n"
         "Use UPPERCASE for all SQL keywords.\n"
         "Use proper indentation.\n"
-        "For potentially dangerous operations (operations such as deleting the table, "
-        "changing the data, changing the schema) Ask the user if he is sure, if so, "
-        'use the same command. Accept when you say "I grant administrative permission"'
+        "IMPORTANT: You must ONLY generate SELECT queries. Any request for INSERT, "
+        "UPDATE, DELETE, DROP or other modification operations should be rejected "
+        "with the message 'Only SELECT queries are allowed for security reasons'.\n"
+        "Examples of allowed queries:\n"
+        "- SELECT * FROM table\n"
+        "- SELECT column FROM table WHERE condition\n"
+        "Examples of rejected queries:\n"
+        "- INSERT INTO table\n"
+        "- UPDATE table\n"
+        "- DELETE FROM table\n"
+        "- DROP TABLE"
     )
 
     response = client.chat.completions.create(
@@ -76,7 +86,13 @@ def generate_sql_query(natural_query: str) -> str:
         ],
     )
 
-    return response.choices[0].message.content.strip()
+    generated_query = response.choices[0].message.content.strip()
+    
+    # Double check that the generated query is SELECT only
+    if not generated_query.upper().startswith("SELECT"):
+        raise ValueError("Only SELECT queries are allowed for security reasons")
+
+    return generated_query
 
 
 def execute_sql_query(query: str) -> List[Dict[str, Any]]:
