@@ -5,147 +5,142 @@ This module provides functionality for:
 - SQL query generation using OpenAI's GPT-4
 - SQL query execution
 """
+
 import os
 import sqlite3
-from typing import List, Dict, Any
+from typing import List, Dict, Any, Tuple
 from dotenv import load_dotenv
 from openai import OpenAI
 
-# Load OpenAI API key from .env
+
 load_dotenv()
 api_key = os.getenv("OPENAI_API_KEY")
-if not api_key:
-    raise ValueError("API key not found in .env file")
 client = OpenAI(api_key=api_key)
 
-# Custom error classes
-class SQLGenerationError(Exception):
-    """Custom error for SQL generation failures"""
-
-class SQLExecutionError(Exception):
-    """Custom error for SQL execution failures"""
 
 def get_db_connection() -> sqlite3.Connection:
-    """
-    Create and return database connection
+    """Creates and returns a SQLite database connection with dictionary row factory.
+
+    The connection is configured to use sqlite3.Row as the row_factory, which allows
+    accessing columns both by index and by name.
+
     Returns:
-        SQLite database connection object
+        sqlite3.Connection: A connection object to the SQLite database with row_factory
+            set to sqlite3.Row for dictionary-like access to rows.
     """
-    try:
-        conn = sqlite3.connect('data.db')
-        conn.row_factory = sqlite3.Row
-        return conn
-    except Exception as e:
-        raise e
+    
+    conn = sqlite3.connect("data.db")
+ 
+    conn.row_factory = sqlite3.Row
+    return conn
+
 
 def get_db_schema() -> str:
-    """
-    Get database schema dynamically
-    Returns:
-        String containing the database schema
-    """
-    try:
-        with get_db_connection() as conn:
-            cursor = conn.cursor()
-            cursor.execute("SELECT sql FROM sqlite_master WHERE type='table';")
-            schema = cursor.fetchall()
-            return "\n".join([row[0] for row in schema if row[0]])
-    except Exception as e:
-        raise e
+    """Retrieves the complete schema of all tables in the database.
 
-def generate_sql_query(natural_query: str) -> str:
+    This function connects to the database, queries the sqlite_master table
+    to get all CREATE TABLE statements, and joins them into a single string.
+    The connection and cursor are automatically closed when the function returns
+    due to the context manager.
+
+    Returns:
+        str: A string containing the SQL CREATE statements for all tables
+            in the database, separated by newlines.
     """
-    Convert natural language query to SQL
+    with get_db_connection() as conn:
+        cursor = conn.cursor()  
+        cursor.execute("SELECT sql FROM sqlite_master WHERE type='table';")
+        schema = cursor.fetchall()
+        return "\n".join([row[0] for row in schema if row[0]])
+
+
+
+def generate_sql_query(natural_query: str) -> Tuple[str, str]:
+    """Generates an SQL query from a natural language query using OpenAI's GPT-4o.
+
+    This function takes a natural language query, sends it to OpenAI's GPT-4o model
+    along with the database schema, and extracts both the explanation and the SQL
+    query from the model's response. The response is parsed to extract the SQL query
+    from between markdown code blocks.
+
     Args:
-        natural_query: Natural language query string
+        natural_query (str): The natural language query to convert to SQL.
+
     Returns:
-        Generated SQL query string
-    Raises:
-        SQLGenerationError: If query generation fails
+        Tuple[str, str]: A tuple containing:
+            - full_response (str): The complete response from GPT-4o including the
+                natural language explanation and the SQL query with markdown formatting
+            - sql_query (str): The extracted SQL query without the markdown formatting
+                (```sql```) tags, ready for execution
     """
-    try:
-        schema = get_db_schema()
-        prompt = f"""
-        Database Schema:
-        {schema}
+    
+    schema = get_db_schema()
+    prompt = f"Database Schema:\n{schema}\n\nUser Query:\n{natural_query}"
 
-        User Query:
-        {natural_query}
-        """
+    system_content = (
+        "You are a database expert. Answer user questions naturally. "
+        "include an SQL query in your response. Write the SQL query between ```sql and ``` "
+        "tags. Example format:\n\n"
+        "I can show you the sales data using this query:\n"
+        "```sql\n"
+        "SELECT * FROM sales\n"
+        "```\n"
+        "This query will show you all sales records.\n\n"
+        "IMPORTANT: Only SELECT queries are allowed for security reasons. "
+        "INSERT, UPDATE, DELETE queries are not allowed."
+    )
 
-        response = client.chat.completions.create(
-            model="gpt-4",
-            messages=[
-                {"role": "system", "content": """
-                You are a SQL query converter. The database has the following tables:
-                    
-                    1. Products:
-                        - ProductID(PK)
-                        - Name
-                        - Category1(Kids,Men,Women) give attention to letter case
-                        - Category2
-                    
-                    2. Transactions:
-                        - StoreID(PK)
-                        - ProductID(FK)
-                        - Quantity
-                        - PricePerQuantity
-                        - Timestamp(Format: YYYY-MM-DD-HH-MM-SS)
-                    
-                    3. Stores:
-                        - StoreID(PK, Store IDs always start with 'STO'. If user provides only numbers, prepend 'STO')
-                        - State(Uses state abbreviations. If full state name is provided, use its abbreviation)
-                        - ZipCode
-                    
-                Create queries according to this schema and use exact table/column names.
-                Case sensitivity in requests doesn't matter.
-                Please return only the SQL query, no additional explanations.
-                Use UPPERCASE for all SQL keywords.
-                Use proper indentation.
-                For potentially dangerous operations. (operations such as deleting the table,changing the data,changing the schema ) Ask the user if he is sure, if so, use the same command. Accept when you say "I grant administrative permission"
-                """},
-                {"role": "user", "content": prompt}
-            ]
-        )
+    response = client.chat.completions.create(
+        model="gpt-4o",
+        messages=[
+            {"role": "system", "content": system_content},
+            {"role": "user", "content": prompt},
+        ],
+    )
+   
+    full_response = response.choices[0].message.content.strip()
+    sql_start = full_response.find("```sql")
+    sql_end = full_response.find("```", sql_start + 5)
+    sql_query = full_response[sql_start + 6:sql_end].strip()
 
-        generated_query = response.choices[0].message.content.strip()
-        return generated_query
+    
+    return full_response, sql_query
 
-    except Exception as e:
-        raise SQLGenerationError(f"Error generating SQL query: {str(e)}") from e
 
 def execute_sql_query(query: str) -> List[Dict[str, Any]]:
-    """
-    Execute SQL query and return results
+    """Executes an SQL query and returns the results as a list of dictionaries.
+
     Args:
-        query: SQL query string to execute
+        query (str): The SQL query to execute.
+
     Returns:
-        List of dictionaries containing query results
-    Raises:
-        SQLExecutionError: If query execution fails
+        List[Dict[str, Any]]: A list of dictionaries where each dictionary represents
+            a row with column names as keys and cell values as values. Returns an
+            empty list if no results are found.
     """
-    try:
-        with get_db_connection() as conn:
-            cursor = conn.cursor()
-            cursor.execute(query)
-            
-            if cursor.description is None:  # For non-SELECT queries
-                conn.commit()
-                return []
-                
-            columns = [description[0] for description in cursor.description]
-            results = cursor.fetchall()
-            
-            if not results:  # For empty results
-                return []
-                
-            formatted_results = [
-                {columns[i]: value for i, value in enumerate(row)}
-                for row in results
-            ]
-            
-            return formatted_results
+    with get_db_connection() as conn:
+        cursor = conn.cursor()
+        cursor.execute(query)
+        columns = [description[0] for description in cursor.description]
+        results = cursor.fetchall()
+        
+        if not results:
+            return []
+        
+        return [{columns[i]: value for i, value in enumerate(row)} for row in results]
 
-    except Exception as e:
-        raise SQLExecutionError(f"Error executing SQL query: {str(e)}") from e
 
+def process_natural_query(natural_query: str) -> Tuple[str, List[Dict[str, Any]]]:
+    """Processes a natural language query by converting it to SQL and executing it.
+
+    Args:
+        natural_query (str): The natural language query to process.
+
+    Returns:
+        Tuple[str, List[Dict[str, Any]]]: A tuple containing:
+            - explanation (str): The AI-generated explanation of the query and results
+            - results (List[Dict[str, Any]]): The query results as a list of dictionaries
+    """
+    explanation, sql_query = generate_sql_query(natural_query)
+    results = execute_sql_query(sql_query)
+    return explanation, results

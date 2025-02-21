@@ -23,9 +23,6 @@ build/
 *.swp
 *.swo
 
-# Database
-*.db
-*.sqlite3
-
 # Logs
 *.log 
+*.java
