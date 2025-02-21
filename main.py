@@ -5,9 +5,9 @@ This API provides two main endpoints:
 - /execute-sql: Executes SQL queries against the database
 """
 from typing import Dict, List, Any
-from fastapi import FastAPI, HTTPException
+from fastapi import FastAPI
 from pydantic import BaseModel
-from utils import generate_sql_query, execute_sql_query
+from utils import process_natural_query
 
 # Initialize FastAPI app
 app = FastAPI(title="Txt to SQL API")
@@ -24,31 +24,24 @@ async def generate_sql(request: QueryRequest) -> Dict[str, str]:
         request: QueryRequest object containing the natural language query
     Returns:
         Dictionary containing the generated SQL query
-    Raises:
-        HTTPException: If query generation fails
     """
-    try:
-        sql_query = generate_sql_query(request.query)
-        return {"query": sql_query}
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e)) from e
+    explanation, sql_query = process_natural_query(request.query)
+    return {"explanation": explanation, "query": sql_query}
 
 @app.post("/execute-sql")
-async def execute_sql(request: QueryRequest) -> Dict[str, List[Dict[str, Any]]]:
+async def execute_sql(request: QueryRequest) -> Dict[str, Any | List[Dict[str, Any]]]:
     """
-    Execute SQL query and return results
+    Generate and execute SQL query from natural language input
     Args:
-        request: QueryRequest object containing the SQL query
+        request: QueryRequest object containing the natural language query
     Returns:
-        Dictionary containing the query results
-    Raises:
-        HTTPException: If query execution fails
+        Dictionary containing the generated SQL query and its results
     """
-    try:
-        results = execute_sql_query(request.query)
-        return {"results": results}
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e)) from e
+    explanation, results = process_natural_query(request.query)
+    return {
+        "explanation": explanation,
+        "results": results
+    }
 
 if __name__ == "__main__":
     import uvicorn
