@@ -13,37 +13,70 @@ from dotenv import load_dotenv
 from openai import OpenAI
 
 
-# Load OpenAI API key from .env
 load_dotenv()
 api_key = os.getenv("OPENAI_API_KEY")
 client = OpenAI(api_key=api_key)
 
-#connection to database using sqlite library it converts the database to a row factory (dictionary format)
+
 def get_db_connection() -> sqlite3.Connection:
-    """Create and return database connection"""
-    #it connects to the database
+    """Creates and returns a SQLite database connection with dictionary row factory.
+
+    The connection is configured to use sqlite3.Row as the row_factory, which allows
+    accessing columns both by index and by name.
+
+    Returns:
+        sqlite3.Connection: A connection object to the SQLite database with row_factory
+            set to sqlite3.Row for dictionary-like access to rows.
+    """
+    
     conn = sqlite3.connect("data.db")
-    #it converts the database to a row factory (dictionary format)  
+ 
     conn.row_factory = sqlite3.Row
     return conn
 
-#get the schema of the database for instruction to the model
+
 def get_db_schema() -> str:
-    """Get database schema dynamically"""
-    #it gets the schema from get_db_connection function
+    """Retrieves the complete schema of all tables in the database.
+
+    This function connects to the database, queries the sqlite_master table
+    to get all CREATE TABLE statements, and joins them into a single string.
+    The connection and cursor are automatically closed when the function returns
+    due to the context manager.
+
+    Returns:
+        str: A string containing the SQL CREATE statements for all tables
+            in the database, separated by newlines.
+    """
     with get_db_connection() as conn:
-        cursor = conn.cursor()
-        #it executes the query to get the schema    
+        cursor = conn.cursor()  
         cursor.execute("SELECT sql FROM sqlite_master WHERE type='table';")
-        #it fetches the schema
         schema = cursor.fetchall()
-        #it returns the schema as a string.
-        ##Also cursor() method close automatically when function return
         return "\n".join([row[0] for row in schema if row[0]])
 
 
-#generate the sql query from the natural language query thanks to openai model
-def generate_sql_query(natural_query: str) -> tuple[str, str]:
+
+def generate_sql_query(natural_query: str) -> Tuple[str, str]:
+    """Generates an SQL query from a natural language query using OpenAI's GPT-4o.
+
+    This function takes a natural language query, sends it to OpenAI's GPT-4o model
+    along with the database schema, and extracts both the explanation and the SQL
+    query from the model's response. The response is parsed to extract the SQL query
+    from between markdown code blocks.
+
+    Args:
+        natural_query (str): The natural language query to convert to SQL.
+
+    Returns:
+        Tuple[str, str]: A tuple containing:
+            - full_response (str): The complete response from GPT-4o including the
+                natural language explanation and the SQL query with markdown formatting
+            - sql_query (str): The extracted SQL query without the markdown formatting
+                (```sql```) tags, ready for execution
+
+    Raises:
+        ValueError: If the response doesn't contain a properly formatted SQL query
+            (missing ```sql``` tags)
+    """
     
     schema = get_db_schema()
     prompt = f"Database Schema:\n{schema}\n\nUser Query:\n{natural_query}"
@@ -68,18 +101,27 @@ def generate_sql_query(natural_query: str) -> tuple[str, str]:
             {"role": "user", "content": prompt},
         ],
     )
-    #search for the sql query and the explanation in the response and defines them as sql_query and full_response 
+   
     full_response = response.choices[0].message.content.strip()
     sql_start = full_response.find("```sql")
     sql_end = full_response.find("```", sql_start + 5)
     sql_query = full_response[sql_start + 6:sql_end].strip()
 
-    #it returns the response and the sql query
+    
     return full_response, sql_query
 
 
 def execute_sql_query(query: str) -> List[Dict[str, Any]]:
-    """Execute SQL query and return results."""
+    """Executes an SQL query and returns the results as a list of dictionaries.
+
+    Args:
+        query (str): The SQL query to execute.
+
+    Returns:
+        List[Dict[str, Any]]: A list of dictionaries where each dictionary represents
+            a row with column names as keys and cell values as values. Returns an
+            empty list if no results are found.
+    """
     with get_db_connection() as conn:
         cursor = conn.cursor()
         cursor.execute(query)
@@ -93,7 +135,16 @@ def execute_sql_query(query: str) -> List[Dict[str, Any]]:
 
 
 def process_natural_query(natural_query: str) -> Tuple[str, List[Dict[str, Any]]]:
-    """Process a natural language query and return both the explanation and results."""
+    """Processes a natural language query by converting it to SQL and executing it.
+
+    Args:
+        natural_query (str): The natural language query to process.
+
+    Returns:
+        Tuple[str, List[Dict[str, Any]]]: A tuple containing:
+            - explanation (str): The AI-generated explanation of the query and results
+            - results (List[Dict[str, Any]]): The query results as a list of dictionaries
+    """
     explanation, sql_query = generate_sql_query(natural_query)
     results = execute_sql_query(sql_query)
     return explanation, results
