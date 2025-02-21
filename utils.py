@@ -72,10 +72,6 @@ def generate_sql_query(natural_query: str) -> Tuple[str, str]:
                 natural language explanation and the SQL query with markdown formatting
             - sql_query (str): The extracted SQL query without the markdown formatting
                 (```sql```) tags, ready for execution
-
-    Raises:
-        ValueError: If the response doesn't contain a properly formatted SQL query
-            (missing ```sql``` tags)
     """
     
     schema = get_db_schema()
