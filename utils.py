@@ -36,22 +36,43 @@ def get_db_connection() -> sqlite3.Connection:
 
 
 def get_db_schema() -> str:
-    """Retrieves the complete schema of all tables in the database.
+    """Retrieves the complete schema of all tables in the database including column descriptions.
 
-    This function connects to the database, queries the sqlite_master table
-    to get all CREATE TABLE statements, and joins them into a single string.
-    The connection and cursor are automatically closed when the function returns
-    due to the context manager.
+    This function:
+    1. Gets all CREATE TABLE statements from sqlite_master
+    2. Gets all column descriptions from table_column_descriptions
+    3. Combines them into a comprehensive schema string
 
     Returns:
-        str: A string containing the SQL CREATE statements for all tables
-            in the database, separated by newlines.
+        str: A string containing the SQL CREATE statements and column descriptions
+            for all tables in the database.
     """
     with get_db_connection() as conn:
-        cursor = conn.cursor()  
+        cursor = conn.cursor()
+        
+        # Get table creation SQL
         cursor.execute("SELECT sql FROM sqlite_master WHERE type='table';")
-        schema = cursor.fetchall()
-        return "\n".join([row[0] for row in schema if row[0]])
+        schema_sql = cursor.fetchall()
+        table_schemas = "\n".join([row[0] for row in schema_sql if row[0]])
+        
+        # Get column descriptions
+        cursor.execute("SELECT table_name, column_name, description FROM table_column_descriptions ORDER BY table_name;")
+        descriptions = cursor.fetchall()
+        
+        # Format descriptions by table
+        desc_by_table = {}
+        for table, column, desc in descriptions:
+            if table not in desc_by_table:
+                desc_by_table[table] = []
+            desc_by_table[table].append(f"- {column}: {desc}")
+        
+        # Combine descriptions into a string
+        description_text = "\nColumn Descriptions:\n"
+        for table in desc_by_table:
+            description_text += f"\n{table} Table:\n"
+            description_text += "\n".join(desc_by_table[table]) + "\n"
+        
+        return table_schemas + description_text
 
 
 
@@ -78,16 +99,39 @@ def generate_sql_query(natural_query: str) -> Tuple[str, str]:
     prompt = f"Database Schema:\n{schema}\n\nUser Query:\n{natural_query}"
 
     system_content = (
-        "You are a database expert. Answer user questions naturally. "
-        "include an SQL query in your response. Write the SQL query between ```sql and ``` "
-        "tags. Example format:\n\n"
-        "I can show you the sales data using this query:\n"
+        "You are a database expert. Follow these steps IN ORDER:\n\n"
+        "1. ANALYZE PHASE - MANDATORY:\n"
+        "   - First, carefully analyze the complete database schema\n"
+        "   - Study ALL column descriptions from table_column_descriptions\n"
+        "   - Pay special attention to:\n"
+        "     * Data formats (e.g., date formats, state codes)\n"
+        "     * Case sensitivity requirements\n"
+        "     * Primary and Foreign key relationships\n"
+        "     * Any specific constraints or formats mentioned\n\n"
+        "2. PLANNING PHASE - MANDATORY:\n"
+        "   - Identify which tables and columns are needed\n"
+        "   - Consider data format requirements (e.g., using 'NY' instead of 'New York')\n"
+        "   - Plan necessary joins based on PK/FK relationships\n"
+        "   - Consider case sensitivity where required\n\n"
+        "3. QUERY GENERATION PHASE:\n"
+        "   - Only after completing analysis and planning, write the SQL query\n"
+        "   - Must follow all format requirements found in analysis\n"
+        "   - Write the query between ```sql and ``` tags\n\n"
+        "4. EXPLANATION PHASE:\n"
+        "   - Explain your query in natural language\n"
+        "   - Mention any important data format considerations\n\n"
+        "Example format:\n"
+        "Based on the schema analysis, I notice that State uses 2-letter codes and Category1 is case-sensitive.\n"
+        "Here's the query:\n"
         "```sql\n"
-        "SELECT * FROM sales\n"
+        "SELECT * FROM Stores WHERE State = 'NY'\n"
         "```\n"
-        "This query will show you all sales records.\n\n"
-        "IMPORTANT: Only SELECT queries are allowed for security reasons. "
-        "INSERT, UPDATE, DELETE queries are not allowed."
+        "This will show all stores in New York (using NY state code).\n\n"
+        "IMPORTANT RULES:\n"
+        "- Only SELECT queries are allowed (no INSERT, UPDATE, DELETE)\n"
+        "- You MUST respect all data formats and constraints from schema\n"
+        "- You MUST use table_column_descriptions for understanding columns\n"
+        "- You MUST mention in your explanation any data format considerations"
     )
 
     response = client.chat.completions.create(
@@ -130,17 +174,15 @@ def execute_sql_query(query: str) -> List[Dict[str, Any]]:
         return [{columns[i]: value for i, value in enumerate(row)} for row in results]
 
 
-def process_natural_query(natural_query: str) -> Tuple[str, List[Dict[str, Any]]]:
-    """Processes a natural language query by converting it to SQL and executing it.
+def process_natural_query(natural_query: str) -> Tuple[str, str]:
+    """Processes a natural language query by converting it to SQL.
 
     Args:
         natural_query (str): The natural language query to process.
 
     Returns:
-        Tuple[str, List[Dict[str, Any]]]: A tuple containing:
-            - explanation (str): The AI-generated explanation of the query and results
-            - results (List[Dict[str, Any]]): The query results as a list of dictionaries
+        Tuple[str, str]: A tuple containing:
+            - explanation (str): The AI-generated explanation of the query
+            - sql_query (str): The generated SQL query
     """
-    explanation, sql_query = generate_sql_query(natural_query)
-    results = execute_sql_query(sql_query)
-    return explanation, results
+    return generate_sql_query(natural_query)
