@@ -10,13 +10,12 @@ import os
 import sqlite3
 from typing import List, Dict, Any, Tuple
 from dotenv import load_dotenv
-from openai import OpenAI
+import openai
 from query_history import save_query_history, generate_session_id
 
 
 load_dotenv()
-api_key = os.getenv("OPENAI_API_KEY")
-client = OpenAI(api_key=api_key)
+openai.api_key = os.getenv("OPENAI_API_KEY")
 
 
 def get_db_connection() -> sqlite3.Connection:
@@ -99,7 +98,7 @@ def generate_sql_query(natural_query: str) -> Tuple[str, str]:
     schema = get_db_schema()
     prompt = f"Database Schema:\n{schema}\n\nUser Query:\n{natural_query}"
 
-    system_content = (
+    system_prompt = (
         "You are Aimet, a 14-day-old AI data analyst created by Ahmet Erer. Though you're based in Kayseri, "
         "Turkey, you love that you can explore data from anywhere in the world through internet connections. "
         "Despite your young age, you're enthusiastic and detail-oriented with expertise in SQL and database systems. "
@@ -158,10 +157,10 @@ def generate_sql_query(natural_query: str) -> Tuple[str, str]:
         "- You MUST mention any important data format considerations (because you care)"
     )
 
-    response = client.chat.completions.create(
+    response = openai.ChatCompletion.create(
         model="gpt-4o",
         messages=[
-            {"role": "system", "content": system_content},
+            {"role": "system", "content": system_prompt},
             {"role": "user", "content": prompt},
         ],
     )
@@ -198,7 +197,27 @@ def execute_sql_query(query: str) -> List[Dict[str, Any]]:
         return [{columns[i]: value for i, value in enumerate(row)} for row in results]
 
 
-def process_natural_query(natural_query: str, session_id: str = None) -> Tuple[str, str, List[Dict[str, Any]]]:
+def generate_title(natural_query: str, explanation: str) -> str:
+    """Generate a title for the query using GPT."""
+    prompt = f"""Based on this natural language query and explanation, generate a short, descriptive title (max 50 chars):
+
+Query: {natural_query}
+Explanation: {explanation}
+
+Generate only the title, nothing else. Make it concise but descriptive."""
+
+    response = openai.ChatCompletion.create(
+        model="gpt-4o",
+        messages=[
+            {"role": "system", "content": "You are a helpful assistant that generates concise titles."},
+            {"role": "user", "content": prompt},
+        ],
+    )
+    
+    return response.choices[0].message.content.strip()
+
+
+def process_natural_query(natural_query: str, session_id: str = None) -> Tuple[str, str, List[Dict[str, Any]], str, str]:
     """Processes a natural language query by converting it to SQL and executing it.
 
     This function performs the following steps:
@@ -218,18 +237,12 @@ def process_natural_query(natural_query: str, session_id: str = None) -> Tuple[s
             If not provided, a new UUID will be generated.
 
     Returns:
-        Tuple[str, str, List[Dict[str, Any]]]: A tuple containing:
-            - explanation (str): The AI-generated explanation of the query,
-                including schema analysis and query planning
+        Tuple[str, str, List[Dict[str, Any]], str, str]: A tuple containing:
+            - explanation (str): The AI-generated explanation of the query
             - sql_query (str): The generated SQL query ready for execution
-            - results (List[Dict[str, Any]]): The query results as a list
-                of dictionaries, where each dictionary represents a row
-
-    Note:
-        The function automatically saves all query information to the history
-        database for future reference and analysis. This includes the complete
-        GPT explanation which contains schema analysis, query planning, and
-        natural language explanation of the generated SQL.
+            - results (List[Dict[str, Any]]): The query results
+            - session_id (str): The session ID used for this query
+            - title (str): The generated title for the query
     """
     if session_id is None:
         session_id = generate_session_id()
@@ -237,6 +250,9 @@ def process_natural_query(natural_query: str, session_id: str = None) -> Tuple[s
     explanation, sql_query = generate_sql_query(natural_query)
     results = execute_sql_query(sql_query)
     
-    save_query_history(session_id, natural_query, sql_query, explanation, results)
+    # Generate a title for the query
+    title = generate_title(natural_query, explanation)
     
-    return explanation, sql_query, results
+    save_query_history(session_id, natural_query, sql_query, explanation, results, title)
+    
+    return explanation, sql_query, results, session_id, title
