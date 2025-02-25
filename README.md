@@ -1,10 +1,40 @@
-# Natural Language to SQL API
+# Natural Language to SQL Converter
 
-This API converts natural language queries to SQL and executes them against a SQLite database.
+A modern web application that converts natural language queries into SQL and executes them against a database. The application features a chat-like interface for querying data and viewing results in real-time.
+
+## Features
+
+- **Natural Language Processing**: Convert plain English queries into SQL
+- **Real-time Query Execution**: Execute generated SQL queries and see results instantly
+- **Session Management**: Group related queries into sessions for better organization
+- **Query History**: Browse through past queries and their results
+- **Detailed Explanations**: Get comprehensive explanations of how each query is processed
+- **Modern UI**: Clean, responsive interface with dark mode support
+- **Error Handling**: Robust error handling with informative messages
+
+## Architecture
+
+The application consists of two main components:
+
+### Backend (Python/FastAPI)
+- Natural language processing using GPT models
+- SQL query generation and validation
+- Database operations and query execution
+- Session and history management
+- RESTful API endpoints
+
+### Frontend (Next.js/React)
+- Modern, responsive UI built with Chakra UI
+- Real-time query processing
+- Session management interface
+- Query history visualization
+- Error handling and user feedback
 
 ## Setup
 
-1. Install dependencies:
+### Backend Setup
+
+1. Install Python dependencies:
 ```bash
 pip install -r requirements.txt
 ```
@@ -19,9 +49,26 @@ OPENAI_API_KEY=your_api_key_here
 python main.py
 ```
 
+### Frontend Setup
+
+1. Navigate to the frontend directory:
+```bash
+cd frontend
+```
+
+2. Install Node.js dependencies:
+```bash
+npm install
+```
+
+3. Start the development server:
+```bash
+npm run dev
+```
+
 ## Database Schema
 
-The database consists of three main tables with the following structure and descriptions:
+The application works with a SQLite database containing the following tables:
 
 ### Products Table
 | Column    | Description |
@@ -47,19 +94,6 @@ The database consists of three main tables with the following structure and desc
 | State    | US State abbreviation (2 letters) |
 | ZipCode  | US ZIP code |
 
-### Viewing Table Descriptions in SQLite
-You can view these table and column descriptions directly in the database using SQLite commands:
-
-1. To view all table and column descriptions:
-```bash
-sqlite3 data.db "SELECT * FROM table_column_descriptions;"
-```
-
-2. To view descriptions for a specific table (e.g., Products):
-```bash
-sqlite3 data.db "SELECT * FROM table_column_descriptions WHERE table_name = 'Products';"
-```
-
 ## API Endpoints
 
 ### 1. Generate SQL Query
@@ -68,53 +102,66 @@ POST /generate-sql
 ```
 Convert natural language to SQL query.
 
-Example request:
-```json
-{
-    "query": "Show me all women's products"
-}
-```
-
-Example response:
-```json
-{
-    "query": "SELECT * FROM Products WHERE Category1 = 'women'"
-}
-```
-
 ### 2. Execute SQL Query
 ```
 POST /execute-sql
 ```
 Execute a SQL query and get results.
 
-Example request:
-```json
-{
-    "query": "SELECT * FROM Products WHERE Category1 = 'women'"
-}
+### 3. Get Sessions
 ```
+GET /sessions
+```
+Retrieve all query sessions with their history.
 
-Example response:
-```json
-{
-    "results": [
-        {
-            "ProductID": "PRO1O036364",
-            "Name": "Glyph",
-            "Category1": "Women",
-            "Category2": "Boots"
-        }
-    ]
-}
-```
+## Example Queries
+
+Here are some example queries you can try:
+
+1. "Show me all women's products"
+2. "What are the total sales in New York stores?"
+3. "List all stores in California with their zip codes"
+4. "Show me the top 5 selling products in the last month"
+5. "What is the average price of men's shoes?"
 
 ## Error Handling
 
-The API returns appropriate HTTP status codes and error messages:
-- 400: Bad Request (invalid input)
-- 500: Internal Server Error (query generation/execution failed)
+The application includes comprehensive error handling:
+
+- Input validation
+- SQL query validation
+- Database connection errors
+- API rate limiting
+- Network connectivity issues
 
 ## Logging
 
-All operations are logged to `sql_operations.log` for debugging and monitoring. 
+All operations are logged for monitoring and debugging:
+
+- Query processing steps
+- SQL generation details
+- Execution results
+- Error states
+- Performance metrics
+
+## Security
+
+The application implements several security measures:
+
+- SQL injection prevention
+- Input sanitization
+- Query validation
+- Rate limiting
+- CORS protection
+
+## Contributing
+
+1. Fork the repository
+2. Create your feature branch
+3. Commit your changes
+4. Push to the branch
+5. Create a new Pull Request
+
+## License
+
+This project is licensed under the MIT License - see the LICENSE file for details. 
