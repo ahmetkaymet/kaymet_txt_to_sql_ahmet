@@ -1,47 +1,30 @@
 """
-Query History Module
-
-This module provides functionality for storing and retrieving query history in a SQLite database.
-It manages session-based tracking of natural language queries, their SQL translations,
-GPT explanations, and query results.
-
-Functions:
-    generate_session_id(): Generate unique session IDs
-    save_query_history(): Save query history with results
-    get_all_sessions(): Retrieve all sessions with their queries
-    initialize_history_db(): Initialize the history database
-
-Example:
-    >>> session_id = generate_session_id()
-    >>> save_query_history(
-    ...     session_id=session_id,
-    ...     natural_query="Show all products",
-    ...     sql_query="SELECT * FROM Products",
-    ...     gpt_explanation="Detailed analysis...",
-    ...     query_result=[{"ProductID": "123"}],
-    ...     title="Product List Query"
-    ... )
-    >>> sessions = get_all_sessions()
+Simple Query History Module
+This module provides basic functionality for storing and retrieving query history using SQLite.
 """
 
 import sqlite3
-import uuid
 import json
-from typing import List, Dict, Any, Optional, Union
+import os
+import uuid
+from typing import List, Dict, Any
 
-__all__ = ['save_query_history', 'generate_session_id', 'get_all_sessions']
+DB_PATH = os.path.join(os.path.dirname(os.path.abspath(__file__)), "query_history.db")
 
+def generate_session_id() -> str:
+    """Generate a unique session ID"""
+    return str(uuid.uuid4())
 
-def get_db_connection() -> sqlite3.Connection:
-    """Create and return a connection to the query history database."""
-    conn = sqlite3.connect("query_history.db")
+def get_db_connection():
+    """Create a database connection"""
+    conn = sqlite3.connect(DB_PATH)
     conn.row_factory = sqlite3.Row
     return conn
 
-
-def initialize_history_db() -> None:
-    """Initialize the query history database schema."""
+def initialize_history_db():
+    """Create the query history table if it doesn't exist"""
     with get_db_connection() as conn:
+        # Create the table if it doesn't exist
         conn.execute("""
         CREATE TABLE IF NOT EXISTS query_history (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -56,21 +39,10 @@ def initialize_history_db() -> None:
         """)
         conn.commit()
 
-
-def generate_session_id() -> str:
-    """Generate a unique session ID."""
-    return str(uuid.uuid4())
-
-
-def save_query_history(
-    session_id: str,
-    natural_query: str,
-    sql_query: str,
-    gpt_explanation: str,
-    query_result: List[Dict[str, Any]],
-    title: Optional[str] = None
-) -> None:
-    """Save query details and results to history database."""
+def save_query_history(session_id: str, natural_query: str, sql_query: str, 
+                      explanation: str, query_result: List[Dict[str, Any]], 
+                      title: str = None) -> None:
+    """Save a query to history"""
     with get_db_connection() as conn:
         conn.execute(
             """
@@ -80,55 +52,50 @@ def save_query_history(
             )
             VALUES (?, ?, ?, ?, ?, ?)
             """,
-            (session_id, natural_query, sql_query, gpt_explanation,
+            (session_id, natural_query, sql_query, explanation,
              json.dumps(query_result), title)
         )
         conn.commit()
 
-
-def parse_query_result(result_str: str) -> Union[Dict, List, str]:
-    """Parse query result string into Python object."""
-    if isinstance(result_str, (dict, list)):
-        return result_str
-
-    try:
-        return json.loads(result_str)
-    except json.JSONDecodeError:
-        try:
-            import ast
-            return ast.literal_eval(result_str)
-        except (ValueError, SyntaxError):
-            return result_str
-
-
 def get_all_sessions() -> List[Dict[str, Any]]:
-    """Retrieve all query sessions with their queries."""
+    """Get all query sessions, ordered by timestamp"""
     with get_db_connection() as conn:
+        # Get all queries, ordered by timestamp descending
         cursor = conn.execute("""
-            SELECT * FROM query_history 
-            ORDER BY session_id, timestamp DESC
+            SELECT 
+                id,
+                session_id,
+                natural_query,
+                sql_query,
+                gpt_explanation as explanation,
+                query_result,
+                title,
+                timestamp
+            FROM query_history 
+            ORDER BY timestamp DESC
         """)
-        all_queries = cursor.fetchall()
-
-        if not all_queries:
-            return []
-
-        sessions = {}
-        for query in all_queries:
+        queries = cursor.fetchall()
+        
+        # Convert to list of dictionaries
+        result = []
+        for query in queries:
             query_dict = dict(query)
-            session_id = query_dict['session_id']
-
+            # Parse the JSON string back to a Python object
+            query_dict['query_result'] = json.loads(query_dict['query_result'])
+            result.append(query_dict)
+            
+        # Group by session_id
+        sessions = {}
+        for query in result:
+            session_id = query['session_id']
             if session_id not in sessions:
                 sessions[session_id] = {
                     'id': session_id,
                     'queries': []
                 }
-
-            query_dict['query_result'] = parse_query_result(query_dict['query_result'])
-            sessions[session_id]['queries'].append(query_dict)
-
+            sessions[session_id]['queries'].append(query)
+            
         return list(sessions.values())
 
-
-# Initialize the history database when the module is imported
+# Initialize database when module is imported
 initialize_history_db() 
