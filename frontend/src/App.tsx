@@ -30,6 +30,7 @@ interface QueryResult {
   results: any[]
   session_id: string
   title: string
+  timestamp: string
 }
 
 interface HistoryItem {
@@ -115,26 +116,28 @@ function App() {
                   <Text mt={2}>Loading...</Text>
                 </Box>
               ) : history.length > 0 ? (
-                history[0].queries.map((item, index) => (
-                  <Box
-                    key={index}
-                    p={3}
-                    bg={result?.session_id === item.session_id ? 'blue.50' : 'gray.50'}
-                    rounded="md"
-                    cursor="pointer"
-                    onClick={() => setResult(item)}
-                    _hover={{ bg: 'blue.50' }}
-                  >
-                    <Text fontSize="sm" fontWeight="medium" noOfLines={2}>
-                      {item.natural_query}
-                    </Text>
-                    <HStack mt={2} spacing={2}>
-                      <Badge colorScheme="blue" fontSize="xs">
-                        {new Date(item.session_id).toLocaleTimeString()}
-                      </Badge>
-                    </HStack>
-                  </Box>
-                ))
+                history.flatMap(session => 
+                  session.queries.map((item, index) => (
+                    <Box
+                      key={`${session.id}-${index}`}
+                      p={3}
+                      bg={result?.session_id === item.session_id ? 'blue.50' : 'gray.50'}
+                      rounded="md"
+                      cursor="pointer"
+                      onClick={() => setResult(item)}
+                      _hover={{ bg: 'blue.50' }}
+                    >
+                      <Text fontSize="sm" fontWeight="medium" noOfLines={2}>
+                        {item.natural_query}
+                      </Text>
+                      <HStack mt={2} spacing={2}>
+                        <Badge colorScheme="blue" fontSize="xs">
+                          {new Date(item.timestamp).toLocaleString()}
+                        </Badge>
+                      </HStack>
+                    </Box>
+                  ))
+                )
               ) : (
                 <Text color="gray.500" textAlign="center">No query history yet</Text>
               )}
