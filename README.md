@@ -76,7 +76,7 @@ The backend will run on `http://localhost:8000`
 cd frontend
 ```
 
-2. Install Node.js dependencies:
+2. Install dependencies:
 ```bash
 npm install
 ```
@@ -85,7 +85,7 @@ npm install
 ```bash
 npm run dev
 ```
-The frontend will run on `http://localhost:5173`
+The frontend will run on `http://localhost:3000`
 
 ## Database Schema
 
@@ -162,7 +162,7 @@ Common issues and solutions:
      npm cache clean --force
      npm install
      ```
-   - Check for port conflicts (default: 5173)
+   - Check for port conflicts (default: 3000)
 
 3. **API Connection Issues**:
    - Verify backend is running on port 8000
