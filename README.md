@@ -12,6 +12,13 @@ A modern web application that converts natural language queries into SQL and exe
 - **Modern UI**: Clean, responsive interface with dark mode support
 - **Error Handling**: Robust error handling with informative messages
 
+## Prerequisites
+
+- Python 3.8 or higher
+- Node.js 18 or higher
+- npm 9 or higher
+- OpenAI API key
+
 ## Architecture
 
 The application consists of two main components:
@@ -23,7 +30,7 @@ The application consists of two main components:
 - Session and history management
 - RESTful API endpoints
 
-### Frontend (Next.js/React)
+### Frontend (Vite + React + TypeScript)
 - Modern, responsive UI built with Chakra UI
 - Real-time query processing
 - Session management interface
@@ -34,20 +41,33 @@ The application consists of two main components:
 
 ### Backend Setup
 
-1. Install Python dependencies:
+1. Create and activate a virtual environment:
+```bash
+# Create virtual environment
+python -m venv .venv
+
+# Activate virtual environment
+# On Windows:
+.venv\Scripts\activate
+# On macOS/Linux:
+source .venv/bin/activate
+```
+
+2. Install Python dependencies:
 ```bash
 pip install -r requirements.txt
 ```
 
-2. Create a `.env` file with your OpenAI API key:
+3. Create a `.env` file in the root directory with your OpenAI API key:
 ```
 OPENAI_API_KEY=your_api_key_here
 ```
 
-3. Start the API server:
+4. Start the backend server:
 ```bash
 python main.py
 ```
+The backend will run on `http://localhost:8000`
 
 ### Frontend Setup
 
@@ -65,6 +85,7 @@ npm install
 ```bash
 npm run dev
 ```
+The frontend will run on `http://localhost:5173`
 
 ## Database Schema
 
@@ -124,43 +145,29 @@ Here are some example queries you can try:
 4. "Show me the top 5 selling products in the last month"
 5. "What is the average price of men's shoes?"
 
-## Error Handling
+## Troubleshooting
 
-The application includes comprehensive error handling:
+Common issues and solutions:
 
-- Input validation
-- SQL query validation
-- Database connection errors
-- API rate limiting
-- Network connectivity issues
+1. **Backend won't start**:
+   - Check if Python virtual environment is activated
+   - Verify OpenAI API key in `.env` file
+   - Ensure all Python dependencies are installed
 
-## Logging
+2. **Frontend won't start**:
+   - Verify Node.js version (18+)
+   - Clear npm cache and node_modules: 
+     ```bash
+     rm -rf node_modules
+     npm cache clean --force
+     npm install
+     ```
+   - Check for port conflicts (default: 5173)
 
-All operations are logged for monitoring and debugging:
-
-- Query processing steps
-- SQL generation details
-- Execution results
-- Error states
-- Performance metrics
-
-## Security
-
-The application implements several security measures:
-
-- SQL injection prevention
-- Input sanitization
-- Query validation
-- Rate limiting
-- CORS protection
-
-## Contributing
-
-1. Fork the repository
-2. Create your feature branch
-3. Commit your changes
-4. Push to the branch
-5. Create a new Pull Request
+3. **API Connection Issues**:
+   - Verify backend is running on port 8000
+   - Check CORS settings if needed
+   - Ensure network connectivity
 
 ## License
 
