@@ -5,13 +5,13 @@ This API provides endpoints:
 - /execute-sql: Executes SQL queries against the database
 - /sessions: Returns all query sessions
 """
-from typing import Dict, List, Any
+from typing import Dict, List, Any, Optional
 import logging
 from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 from utils import process_natural_query, execute_sql_query
-from query_history import get_all_sessions
+from query_history import get_all_sessions, save_query_history
 from datetime import datetime
 
 """
@@ -55,9 +55,9 @@ Logging Middleware:
 # Add CORS middleware
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["http://localhost:3000", "http://localhost:3001"],  # Frontend ports
+    allow_origins=["*"],  # Allow all origins in development
     allow_credentials=True,
-    allow_methods=["GET", "POST", "OPTIONS"],
+    allow_methods=["*"],  # Allow all methods
     allow_headers=["*"]
 )
 
@@ -182,17 +182,53 @@ async def execute_sql(request: QueryRequest) -> ExecuteSQLResponse:
     logger.info(f"Executing SQL for query: {request.query}")
     try:
         explanation, sql_query, results, session_id, title = process_natural_query(request.query, request.session_id)
-        logger.info(f"Query executed successfully, session_id: {session_id}")
-        return ExecuteSQLResponse(
+        
+        # Save query to history
+        save_query_history(
+            session_id=session_id,
+            natural_query=request.query,
+            sql_query=sql_query,
+            explanation=explanation,
+            query_result=results,
+            title=title
+        )
+        
+        # Limit the number of results returned
+        if results and len(results) > 100:
+            results = results[:100]
+            explanation += "\n(Note: Results limited to first 100 rows for better performance)"
+        
+        response = ExecuteSQLResponse(
             explanation=explanation,
             sql_query=sql_query,
             results=results,
             session_id=session_id,
             title=title
         )
+        
+        logger.info(f"Query executed successfully, session_id: {session_id}")
+        return response
     except Exception as e:
         logger.error(f"Error executing query: {e}")
         raise
+
+# Simple in-memory cache
+query_cache = {}
+
+def get_cached_result(key: str) -> Optional[ExecuteSQLResponse]:
+    """Get cached query result if it exists and is not expired"""
+    if key in query_cache:
+        timestamp, result = query_cache[key]
+        # Cache expires after 5 minutes
+        if datetime.now().timestamp() - timestamp < 300:
+            return result
+        else:
+            del query_cache[key]
+    return None
+
+def cache_result(key: str, result: ExecuteSQLResponse) -> None:
+    """Cache query result with timestamp"""
+    query_cache[key] = (datetime.now().timestamp(), result)
 
 if __name__ == "__main__":
     import uvicorn
