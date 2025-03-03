@@ -11,8 +11,6 @@ import sqlite3
 from typing import List, Dict, Any, Tuple
 from dotenv import load_dotenv
 import openai
-from query_history import save_query_history, generate_session_id
-
 
 load_dotenv()
 openai.api_key = os.getenv("OPENAI_API_KEY")
@@ -218,32 +216,9 @@ Generate only the title, nothing else. Make it concise but descriptive."""
 
 
 def process_natural_query(natural_query: str, session_id: str = None) -> Tuple[str, str, List[Dict[str, Any]], str, str]:
-    """Processes a natural language query by converting it to SQL and executing it.
-
-    This function performs the following steps:
-    1. Generates a new session ID if none is provided
-    2. Converts the natural language query to SQL using GPT-4
-    3. Executes the generated SQL query
-    4. Saves the complete query history including:
-        - Original natural language query
-        - Generated SQL query
-        - GPT's detailed explanation
-        - Query results
-        - Session tracking information
-
-    Args:
-        natural_query (str): The natural language query to process
-        session_id (str, optional): Session ID for tracking query history.
-            If not provided, a new UUID will be generated.
-
-    Returns:
-        Tuple[str, str, List[Dict[str, Any]], str, str]: A tuple containing:
-            - explanation (str): The AI-generated explanation of the query
-            - sql_query (str): The generated SQL query ready for execution
-            - results (List[Dict[str, Any]]): The query results
-            - session_id (str): The session ID used for this query
-            - title (str): The generated title for the query
-    """
+    """Processes a natural language query by converting it to SQL and executing it."""
+    from query_history import save_query_history, generate_session_id
+    
     if session_id is None:
         session_id = generate_session_id()
 
