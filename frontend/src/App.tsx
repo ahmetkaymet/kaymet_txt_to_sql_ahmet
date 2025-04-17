@@ -22,6 +22,12 @@ import {
   Badge,
 } from '@chakra-ui/react'
 import axios from 'axios'
+// @ts-ignore
+import ReactMarkdown from 'react-markdown'
+// @ts-ignore
+import { Prism as SyntaxHighlighter } from 'react-syntax-highlighter'
+// @ts-ignore
+import { atomDark } from 'react-syntax-highlighter/dist/esm/styles/prism'
 
 interface QueryResult {
   natural_query: string
@@ -38,6 +44,9 @@ interface HistoryItem {
   queries: QueryResult[]
 }
 
+// API URL'ini doğru şekilde tanımla
+const API_URL = 'http://localhost:8000';
+
 function App() {
   const [query, setQuery] = useState('')
   const [loading, setLoading] = useState(false)
@@ -49,7 +58,8 @@ function App() {
   const fetchHistory = async () => {
     setLoadingHistory(true)
     try {
-      const response = await axios.get('/sessions')
+      // Direkt API_URL kullan
+      const response = await axios.get(`${API_URL}/sessions`);
       setHistory(response.data)
     } catch (error) {
       console.error('Error fetching history:', error)
@@ -79,14 +89,30 @@ function App() {
 
     setLoading(true)
     try {
-      const response = await axios.post('/execute-sql', { 
+      // Direkt API_URL kullan
+      const response = await axios.post(`${API_URL}/check-and-execute`, {
         query: query.trim(),
-        session_id: result?.session_id 
-      })
+        session_id: result?.session_id
+      });
       console.log('Backend response:', response.data)
-      setResult(response.data)
+      
+      // Yanıt no_data durumundaysa
+      if (response.data.status === 'no_data') {
+        toast({
+          title: 'No Data Available',
+          description: response.data.message,
+          status: 'warning',
+          duration: 5000,
+          isClosable: true,
+        });
+        setLoading(false);
+        return;
+      }
+      
+      // Check-and-execute response içindeki data nesnesini (ExecuteSQLResponse) almalıyız
+      setResult(response.data.data)
       setQuery('')
-      fetchHistory() // Yeni sorgu sonrası geçmişi güncelle
+      fetchHistory()
     } catch (error: any) {
       console.error('Error details:', error.response?.data || error)
       toast({
@@ -208,9 +234,34 @@ function App() {
                   {/* Explanation */}
                   <Box>
                     <Text fontWeight="bold" mb={2}>Explanation:</Text>
-                    <Text p={4} bg="gray.50" rounded="md">
-                      {result.explanation}
-                    </Text>
+                    <Box p={4} bg="gray.50" rounded="md">
+                      <ReactMarkdown
+                        // @ts-ignore
+                        components={{
+                          // @ts-ignore
+                          code({node, inline, className, children, ...props}) {
+                            const match = /language-(\w+)/.exec(className || '')
+                            return !inline && match ? (
+                              <SyntaxHighlighter
+                                // @ts-ignore
+                                style={atomDark}
+                                language={match[1]}
+                                PreTag="div"
+                                {...props}
+                              >
+                                {String(children).replace(/\n$/, '')}
+                              </SyntaxHighlighter>
+                            ) : (
+                              <Code className={className} {...props}>
+                                {children}
+                              </Code>
+                            )
+                          }
+                        }}
+                      >
+                        {result.explanation || "No explanation available"}
+                      </ReactMarkdown>
+                    </Box>
                   </Box>
 
                   <Divider />
