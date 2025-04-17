@@ -6,13 +6,10 @@ export default defineConfig({
   server: {
     port: 3000,
     proxy: {
-      '/execute-sql': {
+      '/api': {
         target: 'http://localhost:8000',
-        changeOrigin: true
-      },
-      '/sessions': {
-        target: 'http://localhost:8000',
-        changeOrigin: true
+        changeOrigin: true,
+        rewrite: (path) => path.replace(/^\/api/, '')
       }
     }
   }

@@ -5,14 +5,22 @@ This API provides endpoints:
 - /execute-sql: Executes SQL queries against the database
 - /sessions: Returns all query sessions
 """
-from typing import Dict, List, Any, Optional
+from typing import Dict, List, Any, Optional, Tuple
 import logging
-from fastapi import FastAPI, Request
+from fastapi import FastAPI, Request, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import JSONResponse
 from pydantic import BaseModel
-from utils import process_natural_query, execute_sql_query
+from utils import (
+    process_natural_query, 
+    execute_sql_query,
+    quick_check_sql,
+    check_data_availability
+)
 from query_history import get_all_sessions, save_query_history
 from datetime import datetime
+from openai import OpenAI
+import sqlite3
 
 """
 Logging Configuration
@@ -36,53 +44,25 @@ app = FastAPI(
     version="1.0.0"
 )
 
-"""
-Middleware Configuration
-----------------------
-CORS (Cross-Origin Resource Sharing):
-    Enables secure cross-origin requests from frontend applications
-    - Origins: Development servers on ports 3000 and 3001
-    - Methods: Allows GET, POST, OPTIONS
-    - Headers: Allows all headers
-    - Credentials: Supports authenticated requests
-
-Logging Middleware:
-    Provides request-level logging for monitoring and debugging
-    - Captures: HTTP method, URL, response status
-    - Tracks: Request timing and error states
-    - Purpose: Performance monitoring and error tracking
-"""
-# Add CORS middleware
+# CORS ayarlarını en başa al
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],  # Allow all origins in development
+    allow_origins=["http://localhost:3000", "http://127.0.0.1:3000"],  # Allow both localhost variations
     allow_credentials=True,
-    allow_methods=["*"],  # Allow all methods
-    allow_headers=["*"]
+    allow_methods=["*"],  # Allow all methods during development
+    allow_headers=["*"],  # Allow all headers
+    expose_headers=["*"]  # Expose all headers
 )
 
 # Add logging middleware
 @app.middleware("http")
 async def log_requests(request: Request, call_next):
-    """
-    Logs HTTP request details and response status
-    
-    Args:
-        request (Request): Incoming HTTP request
-        call_next: Next middleware in chain
-        
-    Returns:
-        Response: HTTP response after processing
-        
-    Logs:
-        - Request: Method and URL
-        - Response: Status code
-        - Errors: Exception details if any
-    """
     logger.info(f"Request: {request.method} {request.url}")
+    logger.info(f"Request headers: {request.headers}")
     try:
         response = await call_next(request)
         logger.info(f"Response status: {response.status_code}")
+        logger.info(f"Response headers: {response.headers}")
         return response
     except Exception as e:
         logger.error(f"Request failed: {e}")
@@ -100,6 +80,7 @@ async def root():
             {"path": "/sessions", "method": "GET", "description": "Get all query sessions"},
             {"path": "/generate-sql", "method": "POST", "description": "Generate SQL from natural language"},
             {"path": "/execute-sql", "method": "POST", "description": "Execute natural language query"},
+            {"path": "/check-and-execute", "method": "POST", "description": "Check data availability and execute query"},
         ]
     }
 
@@ -139,17 +120,20 @@ class Session(BaseModel):
     id: str
     queries: List[Dict[str, Any]]
 
-@app.get("/sessions", response_model=List[Session])
-async def get_sessions() -> List[Session]:
-    """Get all query sessions with their queries"""
-    logger.info("Fetching all sessions")
+@app.get("/sessions")
+async def get_sessions():
+    """Get all query sessions from SQLite database"""
     try:
+        from query_history import get_all_sessions
+        # Doğrudan query_history modülünün fonksiyonunu kullanalım
         sessions = get_all_sessions()
-        logger.info(f"Found {len(sessions)} sessions")
-        return sessions
+        
+        # Logla ve cevap döndür
+        logger.info(f"Returned {len(sessions)} sessions with total {sum(len(s['queries']) for s in sessions)} queries")
+        return JSONResponse(content=sessions)
     except Exception as e:
-        logger.error(f"Error fetching sessions: {e}")
-        raise
+        logger.error(f"Error getting sessions: {e}", exc_info=True)
+        return JSONResponse(content=[])
 
 @app.post("/generate-sql", response_model=GenerateSQLResponse)
 async def generate_sql(request: QueryRequest) -> GenerateSQLResponse:
@@ -230,12 +214,65 @@ def cache_result(key: str, result: ExecuteSQLResponse) -> None:
     """Cache query result with timestamp"""
     query_cache[key] = (datetime.now().timestamp(), result)
 
+class CheckAndExecuteResponse(BaseModel):
+    """Response model for check-and-execute endpoint"""
+    status: str
+    message: str
+    data: Optional[ExecuteSQLResponse] = None
+
+@app.post("/check-and-execute", response_model=CheckAndExecuteResponse)
+async def check_and_execute(request: QueryRequest) -> CheckAndExecuteResponse:
+    """Check data availability and execute SQL query if data exists"""
+    logger.info(f"Checking data availability for query: {request.query}")
+    
+    # First, check data availability
+    is_available, check_message = await quick_check_sql(request.query)
+    logger.info(f"Availability check result: {is_available}, message: {check_message}")
+    
+    if not is_available:
+        return CheckAndExecuteResponse(
+            status="no_data",
+            message=check_message,
+            data=None
+        )
+    
+    # If data is available, proceed with normal execution
+    explanation, sql_query, results, session_id, title = process_natural_query(
+        request.query, 
+        request.session_id
+    )
+    
+    # Save query to history
+    save_query_history(
+        session_id=session_id,
+        natural_query=request.query,
+        sql_query=sql_query,
+        explanation=explanation,
+        query_result=results,
+        title=title
+    )
+    
+    response = ExecuteSQLResponse(
+        explanation=explanation,
+        sql_query=sql_query,
+        results=results,
+        session_id=session_id,
+        title=title
+    )
+    
+    return CheckAndExecuteResponse(
+        status="success",
+        message="Query executed successfully",
+        data=response
+    )
+
 if __name__ == "__main__":
     import uvicorn
     logger.info("Starting server...")
     uvicorn.run(
-        app,
-        host="0.0.0.0",
+        "main:app",  # string olarak uygulama yolunu ver
+        host="127.0.0.1",
         port=8000,
-        log_level="info"
-    ) 
+        log_level="debug",
+        reload=True
+    )
