@@ -1,174 +1,337 @@
-# Natural Language to SQL Converter
+# AImet - AI-Powered Data Analytics
 
-A modern web application that converts natural language queries into SQL and executes them against a database. The application features a chat-like interface for querying data and viewing results in real-time.
+A modern, AI-powered application that converts natural language queries to SQL and provides intelligent data analysis with interactive visualizations.
 
-## Features
+## ✨ Features
 
-- **Natural Language Processing**: Convert plain English queries into SQL
-- **Real-time Query Execution**: Execute generated SQL queries and see results instantly
-- **Session Management**: Group related queries into sessions for better organization
-- **Query History**: Browse through past queries and their results
-- **Detailed Explanations**: Get comprehensive explanations of how each query is processed
-- **Modern UI**: Clean, responsive interface with dark mode support
-- **Error Handling**: Robust error handling with informative messages
+### 🤖 **AI-Powered Natural Language Processing**
+- **LangChain Integration**: Advanced LLM pipeline for natural language to SQL conversion
+- **Smart Query Analysis**: AI determines data availability and suggests optimizations
+- **Intelligent Explanations**: Detailed AI-generated explanations of SQL queries and results
 
-## Prerequisites
+### 📊 **Advanced Data Visualization**
+- **Automatic Chart Detection**: AI recommends the most suitable chart type for your data
+- **Interactive Charts**: Pie charts, bar charts, line charts, scatter plots, and tables
+- **PNG Export**: High-quality chart images with HTML fallback support
+- **Responsive Design**: Charts adapt to different screen sizes
 
-- Python 3.8 or higher
+### 🔍 **Smart Data Analysis**
+- **Data Availability Check**: AI warns if requested data cannot be accessed
+- **Result Summaries**: Natural language insights about query results
+- **Query Optimization**: AI suggests improvements for better data retrieval
+
+### 💾 **Comprehensive Query Management**
+- **Session Management**: Organize queries by sessions
+- **Query History**: Complete history with explanations, charts, and configurations
+- **Duplicate Prevention**: Smart deduplication to avoid redundant queries
+- **Persistent Storage**: SQLite database for reliable data persistence
+
+## 🚀 Technology Stack
+
+### **Backend**
+- **Python 3.11+**: Core application logic
+- **FastAPI**: Modern, fast web framework
+- **LangChain**: LLM application framework
+- **OpenAI GPT-4o**: Advanced language model
+- **SQLite**: Lightweight database
+- **Plotly**: Interactive chart generation
+- **Pandas**: Data manipulation and analysis
+
+### **Frontend**
+- **React 18**: Modern UI framework
+- **TypeScript**: Type-safe development
+- **Chakra UI**: Beautiful, accessible components
+- **Plotly.js**: Interactive chart rendering
+- **Vite**: Fast build tool
+
+## 📋 Prerequisites
+
+- Python 3.11 or higher
 - Node.js 18 or higher
-- npm 9 or higher
 - OpenAI API key
+- Modern web browser
 
-## Architecture
+## 🛠️ Installation
 
-The application consists of two main components:
-
-### Backend (Python/FastAPI)
-- Natural language processing using GPT models
-- SQL query generation and validation
-- Database operations and query execution
-- Session and history management
-- RESTful API endpoints
-
-### Frontend (Vite + React + TypeScript)
-- Modern, responsive UI built with Chakra UI
-- Real-time query processing
-- Session management interface
-- Query history visualization
-- Error handling and user feedback
-
-## Setup
-
-### Backend Setup
-
-1. Create and activate a virtual environment:
+### 1. **Clone the Repository**
 ```bash
-# Create virtual environment
-python -m venv .venv
-
-# Activate virtual environment
-# On Windows:
-.venv\Scripts\activate
-# On macOS/Linux:
-source .venv/bin/activate
+git clone <repository-url>
+cd kaymet_txt_to_sql_ahmet-3
 ```
 
-2. Install Python dependencies:
+### 2. **Backend Setup**
 ```bash
+# Install Python dependencies
 pip install -r requirements.txt
+
+# Create environment file
+cp .env.example .env
+# OR create manually:
+echo "OPENAI_API_KEY=your-api-key-here" > .env
+
+# Set OpenAI API key
+export OPENAI_API_KEY="your-api-key-here"
 ```
 
-3. Create a `.env` file in the root directory with your OpenAI API key:
-```
-OPENAI_API_KEY=your_api_key_here
-```
-
-4. Start the backend server:
+### 3. **Database Setup**
 ```bash
-python main.py
+# IMPORTANT: You need to create and populate your own database!
+# The application will NOT automatically create sample data.
+
+# Option 1: Create database manually
+python -c "
+import sqlite3
+conn = sqlite3.connect('data.db')
+cursor = conn.cursor()
+
+# Create your tables (example structure)
+cursor.execute('''
+    CREATE TABLE IF NOT EXISTS Stores (
+        StoreID INTEGER PRIMARY KEY,
+        StoreName TEXT NOT NULL,
+        State TEXT NOT NULL,
+        City TEXT NOT NULL,
+        ZipCode TEXT,
+        Address TEXT
+    )
+''')
+
+cursor.execute('''
+    CREATE TABLE IF NOT EXISTS Products (
+        ProductID INTEGER PRIMARY KEY,
+        ProductName TEXT NOT NULL,
+        Category TEXT,
+        Price REAL NOT NULL
+    )
+''')
+
+cursor.execute('''
+    CREATE TABLE IF NOT EXISTS Transactions (
+        TransactionID INTEGER PRIMARY KEY,
+        StoreID INTEGER,
+        ProductID INTEGER,
+        Quantity INTEGER,
+        PricePerQuantity REAL,
+        TransactionDate DATE,
+        FOREIGN KEY (StoreID) REFERENCES Stores (StoreID),
+        FOREIGN KEY (ProductID) REFERENCES Products (ProductID)
+    )
+''')
+
+# Insert sample data (optional)
+cursor.execute('''
+    INSERT OR IGNORE INTO Stores (StoreID, StoreName, State, City, ZipCode, Address) VALUES
+    (1, 'Downtown Store', 'NY', 'New York', '10001', '123 Main St'),
+    (2, 'Uptown Store', 'NY', 'New York', '10002', '456 Oak Ave'),
+    (3, 'Westside Store', 'CA', 'Los Angeles', '90210', '789 Sunset Blvd')
+''')
+
+cursor.execute('''
+    INSERT OR IGNORE INTO Products (ProductID, ProductName, Category, Price) VALUES
+    (1, 'Laptop', 'Electronics', 999.99),
+    (2, 'Smartphone', 'Electronics', 699.99),
+    (3, 'Coffee Mug', 'Home', 19.99)
+''')
+
+cursor.execute('''
+    INSERT OR IGNORE INTO Transactions (TransactionID, StoreID, ProductID, Quantity, PricePerQuantity, TransactionDate) VALUES
+    (1, 1, 1, 2, 999.99, '2024-01-15'),
+    (2, 2, 2, 1, 699.99, '2024-01-16'),
+    (3, 3, 3, 5, 19.99, '2024-01-17')
+''')
+
+conn.commit()
+conn.close()
+print('Database created successfully with sample data!')
+"
+
+# Option 2: Import from existing SQL file
+# sqlite3 data.db < your_data.sql
+
+# Option 3: Use your own database
+# Just place your existing database file as 'data.db' in the project root
 ```
-The backend will run on `http://localhost:8000`
 
-### Frontend Setup
+**Note**: The `query_history.db` file will be created automatically for storing query history, but you must provide your own `data.db` with your actual data!
 
-1. Navigate to the frontend directory:
+### 4. **Frontend Setup**
 ```bash
 cd frontend
-```
-
-2. Install dependencies:
-```bash
 npm install
 ```
 
-3. Start the development server:
+## 🔑 **Required Configuration Files**
+
+### **Environment Variables (.env)**
 ```bash
+# Required: OpenAI API Key
+OPENAI_API_KEY=sk-your-openai-api-key-here
+
+# Optional: Custom configurations
+OPENAI_MODEL=gpt-4o
+LOG_LEVEL=INFO
+```
+
+### **Database Files**
+- `data.db` - Main application database (auto-created)
+- `query_history.db` - Query history database (auto-created)
+
+### **API Key Setup**
+1. Go to [OpenAI Platform](https://platform.openai.com/api-keys)
+2. Create a new API key
+3. Add it to your `.env` file
+4. **Never commit your .env file to version control!**
+
+## 🚀 Running the Application
+
+### 1. **Start Backend**
+```bash
+python main.py
+```
+Backend will be available at `http://localhost:8000`
+
+### 2. **Start Frontend**
+```bash
+cd frontend
 npm run dev
 ```
-The frontend will run on `http://localhost:3000`
+Frontend will be available at `http://localhost:3000`
 
-## Database Schema
-
-The application works with a SQLite database containing the following tables:
-
-### Products Table
-| Column    | Description |
-|-----------|-------------|
-| ProductID | PK - Unique product identifier |
-| Name      | Product name |
-| Category1 | Main category (Kids/Men/Women) - Case sensitive |
-| Category2 | Sub-category |
-
-### Transactions Table
-| Column           | Description |
-|------------------|-------------|
-| StoreID         | PK - Store identifier |
-| ProductID       | FK - References Products(ProductID) |
-| Quantity        | Number of items sold |
-| PricePerQuantity| Price per unit |
-| Timestamp       | Format: YYYY-MM-DD-HH-MM-SS |
-
-### Stores Table
-| Column   | Description |
-|----------|-------------|
-| StoreID  | PK - Store ID (starts with STO) |
-| State    | US State abbreviation (2 letters) |
-| ZipCode  | US ZIP code |
-
-## API Endpoints
-
-### 1. Generate SQL Query
+## 📁 **Project Structure**
 ```
-POST /generate-sql
+kaymet_txt_to_sql_ahmet-3/
+├── .env                    # Environment variables (create this)
+├── .gitignore             # Git ignore rules
+├── main.py                # FastAPI application entry point
+├── langchain_utils.py     # LangChain integration and AI logic
+├── query_history.py       # Database operations and history management
+├── requirements.txt       # Python dependencies
+├── data.db               # YOUR database with your data (create this!)
+├── query_history.db      # Query history database (auto-created)
+├── frontend/             # React frontend application
+│   ├── src/
+│   ├── package.json
+│   └── index.html
+└── README.md             # This file
 ```
-Convert natural language to SQL query.
 
-### 2. Execute SQL Query
+**Important Files to Create:**
+- `.env` - Your environment variables
+- `data.db` - Your actual database with your data
+
+## 💡 Usage Examples
+
+### **Basic Query**
 ```
-POST /execute-sql
+"Show me all stores in New York"
 ```
-Execute a SQL query and get results.
+**AI Response**: "I found 5 stores in New York. Here's the breakdown..."
 
-### 3. Get Sessions
+### **Sales Analysis**
 ```
-GET /sessions
+"Show me sales by state"
 ```
-Retrieve all query sessions with their history.
+**AI Response**: "I found sales data for 8 states. California has the highest sales at $15,000..."
 
-## Example Queries
+### **Chart Generation**
+```
+"Create a pie chart of sales by product category"
+```
+**AI Response**: "I've generated a pie chart showing the distribution of sales across 6 product categories..."
 
-Here are some example queries you can try:
+## 🔧 API Endpoints
 
-1. "Show me all women's products"
-2. "What are the total sales in New York stores?"
-3. "List all stores in California with their zip codes"
-4. "Show me the top 5 selling products in the last month"
-5. "What is the average price of men's shoes?"
+- `GET /`: API information
+- `GET /sessions`: Get all query sessions
+- `POST /generate-sql`: Generate SQL from natural language
+- `POST /execute-sql`: Execute natural language query
+- `POST /check-and-execute`: Check data availability and execute
+- `POST /chart`: Generate charts for query results
 
-## Troubleshooting
+## 📊 Chart Types
 
-Common issues and solutions:
+The AI automatically detects and generates the most appropriate chart type:
 
-1. **Backend won't start**:
-   - Check if Python virtual environment is activated
-   - Verify OpenAI API key in `.env` file
-   - Ensure all Python dependencies are installed
+- **Pie Charts**: For categorical data distribution
+- **Bar Charts**: For comparisons across categories
+- **Line Charts**: For time series and trends
+- **Scatter Plots**: For correlation analysis
+- **Tables**: For detailed data display
 
-2. **Frontend won't start**:
+## 🎯 Key Benefits
+
+1. **No SQL Knowledge Required**: Ask questions in plain English
+2. **AI-Powered Insights**: Get intelligent analysis of your data
+3. **Interactive Visualizations**: Beautiful charts that tell your data story
+4. **Smart Error Handling**: AI warns about data access issues
+5. **Professional Results**: Production-ready SQL queries and explanations
+
+## 🔒 Security Features
+
+- **SQL Injection Prevention**: All queries are validated and sanitized
+- **Input Validation**: Comprehensive request validation
+- **Error Handling**: Graceful error handling without exposing sensitive information
+- **Environment Variables**: Secure API key management
+
+## 📈 Performance
+
+- **Fast Response**: Optimized LangChain pipeline
+- **Efficient Caching**: Smart query result caching
+- **Background Processing**: Non-blocking chart generation
+- **Responsive UI**: Smooth user experience
+
+## 🚨 **Troubleshooting**
+
+### **Common Issues**
+
+1. **"OpenAI API Key not found"**
+   - Check your `.env` file exists
+   - Verify `OPENAI_API_KEY` is set correctly
+   - Restart the backend after changes
+
+2. **"Database connection failed"**
+   - Ensure you have write permissions in the project directory
+   - Check if SQLite is available in your Python environment
+   - **Verify `data.db` file exists with your data**
+
+3. **"No data available for this query"**
+   - **Check if your `data.db` has the required tables and data**
+   - Verify table names and column names match your schema
+   - Ensure your database has sample data to query
+
+4. **"Frontend not loading"**
    - Verify Node.js version (18+)
-   - Clear npm cache and node_modules: 
-     ```bash
-     rm -rf node_modules
-     npm cache clean --force
-     npm install
-     ```
-   - Check for port conflicts (default: 3000)
+   - Run `npm install` in the frontend directory
+   - Check if port 3000 is available
 
-3. **API Connection Issues**:
-   - Verify backend is running on port 8000
-   - Check CORS settings if needed
-   - Ensure network connectivity
+5. **"Chart generation failed"**
+   - Install kaleido: `pip install kaleido`
+   - Check Plotly installation: `pip install plotly`
 
-## License
+### **Performance Optimization**
+- Use `gpt-4o-mini` for faster responses (edit `langchain_utils.py`)
+- Enable caching for repeated queries
+- Optimize database queries with proper indexing
 
-This project is licensed under the MIT License - see the LICENSE file for details. 
+## 🤝 Contributing
+
+1. Fork the repository
+2. Create a feature branch
+3. Make your changes
+4. Add tests if applicable
+5. Submit a pull request
+
+## 📄 License
+
+This project is licensed under the MIT License.
+
+## 🆘 Support
+
+For issues and questions:
+1. Check the documentation
+2. Review existing issues
+3. Create a new issue with detailed information
+
+---
+
+**Built with ❤️ using LangChain, OpenAI, and modern web technologies** 

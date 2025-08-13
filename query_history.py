@@ -28,21 +28,41 @@ def get_db_connection():
 
 def initialize_history_db():
     """Create the query history table if it doesn't exist"""
-    with get_db_connection() as conn:
-        # Create the table if it doesn't exist
-        conn.execute("""
-        CREATE TABLE IF NOT EXISTS query_history (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            session_id TEXT NOT NULL,
-            natural_query TEXT NOT NULL,
-            sql_query TEXT NOT NULL,
-            explanation TEXT,
-            query_result TEXT,
-            timestamp DATETIME DEFAULT CURRENT_TIMESTAMP,
-            title TEXT
-        )
-        """)
-        conn.commit()
+    try:
+        with get_db_connection() as conn:
+            # Create the table if it doesn't exist
+            conn.execute("""
+            CREATE TABLE IF NOT EXISTS query_history (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                session_id TEXT NOT NULL,
+                natural_query TEXT NOT NULL,
+                sql_query TEXT NOT NULL,
+                explanation TEXT,
+                query_result TEXT,
+                chart_data TEXT,
+                chart_config TEXT,
+                timestamp DATETIME DEFAULT CURRENT_TIMESTAMP,
+                title TEXT
+            )
+            """)
+            
+            # Add new columns if they don't exist
+            try:
+                conn.execute("ALTER TABLE query_history ADD COLUMN chart_data TEXT")
+            except sqlite3.OperationalError:
+                pass  # Column already exists
+                
+            try:
+                conn.execute("ALTER TABLE query_history ADD COLUMN chart_config TEXT")
+            except sqlite3.OperationalError:
+                pass  # Column already exists
+                
+            conn.commit()
+            logger.info("Database initialized successfully")
+            
+    except Exception as e:
+        logger.error(f"Error initializing database: {e}")
+        raise
 
 def get_all_sessions() -> List[Dict[str, Any]]:
     """Get all query sessions from SQLite database"""
@@ -85,6 +105,17 @@ def get_all_sessions() -> List[Dict[str, Any]]:
                 select_cols.extend(["query_result", time_column])
                 if has_title:
                     select_cols.append("title")
+                
+                # Add chart columns if they exist
+                try:
+                    cursor.execute("PRAGMA table_info(query_history)")
+                    all_columns = [column[1] for column in cursor.fetchall()]
+                    if 'chart_data' in all_columns:
+                        select_cols.append("chart_data")
+                    if 'chart_config' in all_columns:
+                        select_cols.append("chart_config")
+                except:
+                    pass
                 
                 col_str = ", ".join(select_cols)
                 
@@ -139,76 +170,47 @@ def get_all_sessions() -> List[Dict[str, Any]]:
         logger.error(f"Error getting sessions from database: {e}", exc_info=True)
         return []
 
-def save_query_history(
-    session_id: str,
-    natural_query: str,
-    sql_query: str,
-    explanation: str,
-    query_result: List[Dict[str, Any]],
-    title: str
-) -> None:
-    """Save query history to SQLite database"""
+def save_query_history(session_id: str, natural_query: str, sql_query: str, query_result: str, explanation: str = None, title: str = None, chart_data: str = None, chart_config: str = None) -> bool:
+    """Save a query to the history database with duplicate prevention"""
     try:
-        with sqlite3.connect(DB_PATH) as conn:
+        initialize_history_db()
+        
+        with get_db_connection() as conn:
             cursor = conn.cursor()
             
-            # Tablonun şemasını kontrol et
-            cursor.execute("PRAGMA table_info(query_history)")
-            columns = [column[1] for column in cursor.fetchall()]
+            # Check if this exact query already exists for this session
+            cursor.execute("""
+                SELECT id FROM query_history 
+                WHERE session_id = ? AND natural_query = ? AND sql_query = ?
+                ORDER BY timestamp DESC
+                LIMIT 1
+            """, (session_id, natural_query, sql_query))
             
-            # Tablo yoksa, en baştan oluştur
-            if not columns:
-                logger.info("Creating query_history table")
+            existing = cursor.fetchone()
+            
+            if existing:
+                # Update existing record instead of creating duplicate
+                logger.info(f"Updating existing query record {existing['id']} instead of creating duplicate")
                 cursor.execute("""
-                    CREATE TABLE IF NOT EXISTS query_history (
-                        id INTEGER PRIMARY KEY AUTOINCREMENT,
-                        session_id TEXT NOT NULL,
-                        natural_query TEXT NOT NULL,
-                        sql_query TEXT NOT NULL,
-                        explanation TEXT,
-                        query_result TEXT,
-                        timestamp DATETIME DEFAULT CURRENT_TIMESTAMP,
-                        title TEXT
-                    )
-                """)
-                # Şema güncellendikten sonra kolonları tekrar al
-                cursor.execute("PRAGMA table_info(query_history)")
-                columns = [column[1] for column in cursor.fetchall()]
-            
-            # Mevcut sütunlara göre sorgu oluştur
-            insert_cols = ["session_id", "natural_query", "sql_query"]
-            values = [session_id, natural_query, sql_query]
-            
-            if "explanation" in columns:
-                insert_cols.append("explanation")
-                values.append(explanation)
-                
-            insert_cols.append("query_result")
-            values.append(str(query_result))
-                
-            if "title" in columns:
-                insert_cols.append("title")
-                values.append(title)
-            
-            # Sorguyu dinamik olarak oluştur
-            cols_str = ", ".join(insert_cols)
-            placeholders = ", ".join(["?" for _ in insert_cols])
-            
-            query = f"""
-                INSERT INTO query_history (
-                    {cols_str}
-                ) VALUES ({placeholders})
-            """
-            
-            logger.info(f"Saving query history with columns: {insert_cols}")
-            cursor.execute(query, values)
+                    UPDATE query_history 
+                    SET query_result = ?, explanation = ?, title = ?, chart_data = ?, chart_config = ?, timestamp = CURRENT_TIMESTAMP
+                    WHERE id = ?
+                """, (query_result, explanation, title, chart_data, chart_config, existing['id']))
+            else:
+                # Insert new record
+                logger.info(f"Inserting new query record for session {session_id}")
+                cursor.execute("""
+                    INSERT INTO query_history (session_id, natural_query, sql_query, query_result, explanation, title, chart_data, chart_config)
+                    VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+                """, (session_id, natural_query, sql_query, query_result, explanation, title, chart_data, chart_config))
             
             conn.commit()
             logger.info(f"Query saved successfully for session: {session_id}")
+            return True
             
     except Exception as e:
-        logger.error(f"Error saving query history: {e}", exc_info=True)
-        raise
+        logger.error(f"Error saving query history: {e}")
+        return False
 
 # Initialize database when module is imported
 initialize_history_db() 
