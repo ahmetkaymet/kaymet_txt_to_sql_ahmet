@@ -8,11 +8,11 @@ This module provides functionality for:
 """
 
 import os
-import sqlite3
 import re
 import json
 import logging
 import datetime
+from config.oracle_config import OracleConnection
 from typing import List, Dict, Any, Tuple, Optional, Union
 from dotenv import load_dotenv
 from openai import OpenAI
@@ -98,15 +98,10 @@ class ChartTypeParser(BaseOutputParser):
         }
 
 
-def get_db_connection() -> sqlite3.Connection:
-    """Creates and returns a SQLite database connection"""
-    db_path = "data.db"
-    if not os.path.exists(db_path):
-        raise FileNotFoundError(f"Database file not found: {db_path}")
-    
-    conn = sqlite3.connect(db_path)
-    conn.row_factory = sqlite3.Row
-    return conn
+def get_db_connection():
+    """Creates and returns an Oracle database connection"""
+    db = OracleConnection()
+    return db.connect()
 
 
 def get_db_schema() -> str:
@@ -114,29 +109,34 @@ def get_db_schema() -> str:
     with get_db_connection() as conn:
         cursor = conn.cursor()
         
-        # Get table creation SQL
-        cursor.execute("SELECT sql FROM sqlite_master WHERE type='table';")
-        schema_sql = cursor.fetchall()
-        table_schemas = "\n".join([row[0] for row in schema_sql if row[0]])
+        # Get all tables
+        cursor.execute("""
+            SELECT table_name 
+            FROM user_tables 
+            ORDER BY table_name
+        """)
+        tables = cursor.fetchall()
         
-        # Get column descriptions
-        cursor.execute("SELECT table_name, column_name, description FROM table_column_descriptions ORDER BY table_name;")
-        descriptions = cursor.fetchall()
+        schema_text = "Database Schema:\n\n"
         
-        # Format descriptions by table
-        desc_by_table = {}
-        for table, column, desc in descriptions:
-            if table not in desc_by_table:
-                desc_by_table[table] = []
-            desc_by_table[table].append(f"- {column}: {desc}")
-        
-        # Combine descriptions into a string
-        description_text = "\nColumn Descriptions:\n"
-        for table in desc_by_table:
-            description_text += f"\n{table} Table:\n"
-            description_text += "\n".join(desc_by_table[table]) + "\n"
-        
-        return table_schemas + description_text
+        for table in tables:
+            table_name = table[0]
+            cursor.execute(f"""
+                SELECT column_name, data_type, nullable
+                FROM user_tab_columns
+                WHERE table_name = '{table_name}'
+                ORDER BY column_id
+            """)
+            columns = cursor.fetchall()
+            
+            schema_text += f"Table: {table_name}\n"
+            schema_text += "-" * (len(table_name) + 7) + "\n"
+            for col in columns:
+                nullable = "NULL" if col[2] == 'Y' else "NOT NULL"
+                schema_text += f"  {col[0]} ({col[1]}) {nullable}\n"
+            schema_text += "\n"
+            
+        return schema_text
 
 
 def create_langchain_pipeline() -> LLMChain:
