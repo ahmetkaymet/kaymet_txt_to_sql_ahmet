@@ -155,6 +155,16 @@ def get_all_sessions() -> List[Dict[str, Any]]:
                     else:
                         query["title"] = "Untitled Query"
                     
+                    # Chart verilerini ekle
+                    if 'chart_data' in columns and row['chart_data']:
+                        query["chart_data"] = row['chart_data']
+                    
+                    if 'chart_config' in columns and row['chart_config']:
+                        try:
+                            query["chart_config"] = eval(row['chart_config']) if row['chart_config'] else {}
+                        except:
+                            query["chart_config"] = {}
+                    
                     queries.append(query)
                 
                 if queries:  # Sorgu varsa session'ı ekle

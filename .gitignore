@@ -1,3 +1,10 @@
+# Oracle Wallet and Keystore files
+Wallet/
+*.jks
+*.sso
+*.ora
+ojdbc.properties
+
 # Python Backend
 __pycache__/
 *.py[cod]

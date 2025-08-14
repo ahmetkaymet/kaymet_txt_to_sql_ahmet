@@ -19,6 +19,7 @@ from langchain_utils import (
     generate_chart,
     detect_chart_type
 )
+from user_roles import validate_user_query, get_user_permissions, user_manager
 from query_history import get_all_sessions, save_query_history
 from datetime import datetime
 from openai import OpenAI
@@ -84,6 +85,8 @@ async def root():
             {"path": "/execute-sql", "method": "POST", "description": "Execute natural language query with LangChain"},
             {"path": "/check-and-execute", "method": "POST", "description": "Check data availability and execute query"},
             {"path": "/chart", "method": "POST", "description": "Generate charts for query results"},
+            {"path": "/user-permissions/{username}", "method": "GET", "description": "Get user permissions"},
+            {"path": "/users", "method": "GET", "description": "List all demo users"},
         ]
     }
 
@@ -91,6 +94,7 @@ class QueryRequest(BaseModel):
     """Request model for query endpoints"""
     query: str
     session_id: str | None = None
+    username: str = "demo_admin"  # Default admin user for demo
 
 class GenerateSQLResponse(BaseModel):
     """Response model for generate-sql endpoint """
@@ -301,7 +305,13 @@ class CheckAndExecuteResponse(BaseModel):
 @app.post("/check-and-execute", response_model=CheckAndExecuteResponse)
 async def check_and_execute(request: QueryRequest) -> CheckAndExecuteResponse:
     """Check data availability and execute SQL query if data exists using LangChain"""
-    logger.info(f"Checking data availability for query: {request.query}")
+    logger.info(f"Checking data availability for query: {request.query} from user: {request.username}")
+    
+    # Generate session_id if not provided
+    if not request.session_id:
+        from query_history import generate_session_id
+        request.session_id = generate_session_id()
+        logger.info(f"Generated new session_id: {request.session_id}")
     
     # First, check data availability using AI
     is_available, check_message = await check_data_availability_with_ai(request.query)
@@ -320,7 +330,44 @@ async def check_and_execute(request: QueryRequest) -> CheckAndExecuteResponse:
         request.session_id
     )
     
-    # Save query to history
+    # USER PERMISSION CHECK - SQL query'yi kullanıcı yetkilerine göre validate et
+    logger.info(f"Validating query permissions for user: {request.username}")
+    permission_check = validate_user_query(request.username, sql_query)
+    
+    if not permission_check["allowed"]:
+        logger.warning(f"Permission denied for user {request.username}: {permission_check['error']}")
+        return CheckAndExecuteResponse(
+            status="permission_denied",
+            message=f"Permission denied: {permission_check['error']}",
+            data=None
+        )
+    
+    # Eğer query modify edildiyse, yeni SQL'i kullan
+    if permission_check["modified_query"] and permission_check["modified_query"] != sql_query:
+        logger.info(f"Query modified for user {request.username} due to permissions")
+        logger.info(f"Original: {sql_query}")
+        logger.info(f"Modified: {permission_check['modified_query']}")
+        sql_query = permission_check["modified_query"]
+        
+        # Modified query ile tekrar execute et
+        try:
+            results = execute_sql_query(sql_query)
+            logger.info(f"Modified query executed successfully, returned {len(results)} results")
+        except Exception as e:
+            logger.error(f"Modified query execution failed: {e}")
+            return CheckAndExecuteResponse(
+                status="error",
+                message=f"Modified query execution failed: {str(e)}",
+                data=None
+            )
+    
+    # Chart yetkisi kontrolü
+    if chart_config and not user_manager.can_create_chart(request.username):
+        logger.info(f"Chart creation disabled for user {request.username}")
+        chart_config = None
+        chart_data = None
+    
+    # Save query to history with user info
     save_query_history(
         session_id=session_id,
         natural_query=request.query,
@@ -329,7 +376,8 @@ async def check_and_execute(request: QueryRequest) -> CheckAndExecuteResponse:
         explanation=explanation,
         title=title,
         chart_data=chart_data,
-        chart_config=str(chart_config)
+        chart_config=str(chart_config),
+        username=request.username  # Kullanıcı bilgisini de kaydet
     )
     
     response = ExecuteSQLResponse(
@@ -344,9 +392,39 @@ async def check_and_execute(request: QueryRequest) -> CheckAndExecuteResponse:
     
     return CheckAndExecuteResponse(
         status="success",
-        message="Query executed successfully with LangChain",
+        message=f"Query executed successfully with LangChain for user {request.username} ({permission_check['user_role']})",
         data=response
     )
+
+@app.get("/user-permissions/{username}")
+async def get_user_permissions_endpoint(username: str):
+    """Get user permissions and role information"""
+    logger.info(f"Getting permissions for user: {username}")
+    permissions = get_user_permissions(username)
+    
+    if "error" in permissions:
+        raise HTTPException(status_code=404, detail=permissions["error"])
+    
+    return {
+        "username": username,
+        "permissions": permissions
+    }
+
+@app.get("/users")
+async def list_users():
+    """List all demo users with their roles"""
+    logger.info("Listing all demo users")
+    
+    users = []
+    for username in ["demo_viewer", "demo_analyst", "demo_admin"]:
+        permissions = get_user_permissions(username)
+        if "error" not in permissions:
+            users.append(permissions)
+    
+    return {
+        "users": users,
+        "total": len(users)
+    }
 
 if __name__ == "__main__":
     import uvicorn

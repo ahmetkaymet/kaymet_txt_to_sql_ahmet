@@ -63,12 +63,12 @@ class SQLQueryParser(BaseOutputParser):
             lines = text.strip().split('\n')
             sql_query = next((line for line in lines if line.upper().startswith("SELECT")), "SELECT * FROM Stores LIMIT 5")
         
-        # Clean up SQL query
-        if ";" in sql_query and not sql_query.strip().endswith(";"):
-            sql_query = sql_query.split(";")[0].strip() + ";"
+        # Clean up SQL query - Oracle DB doesn't need semicolons
+        if ";" in sql_query:
+            sql_query = sql_query.split(";")[0].strip()
         
-        if not sql_query.strip().endswith(";"):
-            sql_query = sql_query.strip() + ";"
+        # Remove any trailing semicolon for Oracle DB compatibility
+        sql_query = sql_query.strip().rstrip(";")
         
         return sql_query
 
@@ -185,7 +185,15 @@ Remember:
 - Only use SELECT queries (data safety first!)
 - When asked about cities like New York, use State='NY'
 - Be enthusiastic and detail-oriented
-- Always identify yourself as Aimet"""
+- Always identify yourself as Aimet
+- IMPORTANT: This is an Oracle database, so use Oracle-specific syntax:
+  * Use ROWNUM instead of LIMIT or FETCH FIRST
+  * Use double quotes around table and column names: "TableName", "ColumnName"
+  * For limiting results, use: WHERE ROWNUM <= N
+  * Oracle doesn't support LIMIT or FETCH FIRST syntax
+  * IMPORTANT: Oracle SQL syntax order must be: SELECT, FROM, JOIN, WHERE, GROUP BY, HAVING, ORDER BY
+  * ROWNUM must be in WHERE clause BEFORE ORDER BY
+  * For top N results with ORDER BY, use subquery: SELECT * FROM (SELECT ... ORDER BY ...) WHERE ROWNUM <= N"""
     )
     
     # Create chain
@@ -201,20 +209,20 @@ def generate_sql_with_langchain(natural_query: str) -> Tuple[str, str, str]:
     
     with get_db_connection() as conn:
         cursor = conn.cursor()
-        cursor.execute("SELECT name FROM sqlite_master WHERE type='table';")
-        tables = [row[0] for row in cursor.fetchall() if row[0] != 'sqlite_master' and not row[0].startswith('sqlite_')]
+        cursor.execute("SELECT table_name FROM user_tables")
+        tables = [row[0] for row in cursor.fetchall()]
         
         # Get table information
         table_info = "\nEXACT TABLE STRUCTURE:\n"
         for table in tables:
-            cursor.execute(f"PRAGMA table_info({table});")
-            columns = [row[1] for row in cursor.fetchall()]
+            cursor.execute(f"SELECT column_name FROM user_tab_columns WHERE table_name = '{table}' ORDER BY column_id")
+            columns = [row[0] for row in cursor.fetchall()]
             table_info += f"{table} table has ONLY these columns: {', '.join(columns)}\n"
         
         # Get sample data
         sample_data = "\nSample Data Examples:\n"
         for table in tables:
-            cursor.execute(f"SELECT * FROM {table} LIMIT 3;")
+            cursor.execute(f"SELECT * FROM \"{table}\" WHERE ROWNUM <= 3")
             rows = cursor.fetchall()
             if rows:
                 sample_data += f"\n{table} sample rows:\n"
@@ -330,7 +338,14 @@ Query: {query}
 Columns: {columns}
 Sample data: {results[:3]}
 
-Suggest the best visualization. Return JSON with:
+Based on the query and data structure, suggest the most appropriate visualization. Consider:
+- If query asks for "distribution" or "percentage" → pie chart
+- If query asks for "comparison" or "ranking" → bar chart  
+- If query asks for "trend" or "over time" → line chart
+- If query asks for "correlation" or "relationship" → scatter plot
+- If query asks for "details" or "list" → table
+
+Return JSON with:
 {{
     "chart_type": "pie|bar|line|scatter|table|none",
     "title": "Chart title",
@@ -351,7 +366,22 @@ Only return valid JSON."""
     try:
         response = llm.invoke(chart_prompt)
         chart_parser = ChartTypeParser()
-        return chart_parser.parse(response.content)
+        result = chart_parser.parse(response.content)
+        
+        # Validate and improve chart configuration
+        if result.get("chart_type") == "bar" and not result.get("y_column"):
+            # For bar charts, try to find numeric columns
+            numeric_cols = [col for col in columns if any(isinstance(row.get(col), (int, float)) for row in results)]
+            if numeric_cols:
+                result["y_column"] = numeric_cols[0]
+        
+        if result.get("chart_type") == "pie" and not result.get("y_column"):
+            # For pie charts, try to find numeric columns
+            numeric_cols = [col for col in columns if any(isinstance(row.get(col), (int, float)) for row in results)]
+            if numeric_cols:
+                result["y_column"] = numeric_cols[0]
+        
+        return result
     except Exception as e:
         logger.error(f"Error detecting chart type: {e}")
         return {"chart_type": "table", "title": "Data Table", "reason": "Default fallback"}

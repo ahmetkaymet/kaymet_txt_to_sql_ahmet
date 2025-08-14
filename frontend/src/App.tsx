@@ -17,13 +17,6 @@ import {
   Tab,
   TabPanel,
   IconButton,
-  Modal,
-  ModalOverlay,
-  ModalContent,
-  ModalHeader,
-  ModalBody,
-  ModalCloseButton,
-  useDisclosure,
   Image,
   Alert,
   AlertIcon,
@@ -39,9 +32,24 @@ import {
   Tr,
   Th,
   Td,
-  Icon
+  Icon,
+  Flex,
+  Drawer,
+  DrawerBody,
+  DrawerHeader,
+  DrawerOverlay,
+  DrawerContent,
+  DrawerCloseButton,
+  Modal,
+  ModalOverlay,
+  ModalContent,
+  ModalHeader,
+  ModalCloseButton,
+  ModalBody,
+  useDisclosure,
+  useBreakpointValue
 } from '@chakra-ui/react';
-import { ViewIcon, CopyIcon, CheckIcon } from '@chakra-ui/icons';
+import { ViewIcon, CopyIcon, CheckIcon, HamburgerIcon } from '@chakra-ui/icons';
 import axios from 'axios';
 import ReactMarkdown from 'react-markdown';
 import { Prism as SyntaxHighlighter } from 'react-syntax-highlighter';
@@ -81,8 +89,13 @@ function App() {
   const [history, setHistory] = useState<HistoryItem[]>([])
   const [loadingHistory, setLoadingHistory] = useState(false)
   const [activeTab, setActiveTab] = useState(0);
+  const [sidebarOpen, setSidebarOpen] = useState(false);
   const { isOpen, onOpen, onClose } = useDisclosure()
   const toast = useToast()
+  
+  // Responsive sidebar state
+  const isDesktop = useBreakpointValue({ base: false, lg: true });
+  const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
 
   const fetchHistory = async () => {
     setLoadingHistory(true)
@@ -210,6 +223,53 @@ function App() {
         isClosable: true,
       });
     }
+  };
+
+  const loadQueryFromHistory = (queryData: any) => {
+    console.log('Loading query from history:', queryData);
+    
+    // Backend'den gelen veri yapısına göre düzenle
+    let results = [];
+    try {
+      if (queryData.results) {
+        // Yeni format: results alanı direkt geliyor
+        results = queryData.results;
+      } else if (queryData.query_result) {
+        // Eğer query_result olarak geliyorsa (eski format)
+        results = JSON.parse(queryData.query_result);
+      }
+    } catch (error) {
+      console.error('Error parsing results:', error);
+      results = [];
+    }
+
+    let chartConfig = undefined;
+    try {
+      if (queryData.chart_config) {
+        chartConfig = typeof queryData.chart_config === 'string' 
+          ? JSON.parse(queryData.chart_config) 
+          : queryData.chart_config;
+      }
+    } catch (error) {
+      console.error('Error parsing chart_config:', error);
+      chartConfig = undefined;
+    }
+
+    const queryResult: QueryResult = {
+      natural_query: queryData.natural_query,
+      sql_query: queryData.sql_query,
+      explanation: queryData.explanation || '',
+      results: results,
+      session_id: queryData.session_id || '',
+      title: queryData.title || queryData.natural_query,
+      timestamp: queryData.timestamp || new Date().toISOString(),
+      chart_data: queryData.chart_data || undefined,
+      chart_config: chartConfig
+    };
+    
+    console.log('Processed query result:', queryResult);
+    setResult(queryResult);
+    setActiveTab(0); // AI Analysis tab'ına geç
   };
 
   const renderChart = () => {
@@ -387,22 +447,7 @@ function App() {
     }
   }, [result?.chart_data]);
 
-  const loadQueryFromHistory = (queryData: any) => {
-    const queryResult: QueryResult = {
-      natural_query: queryData.natural_query,
-      sql_query: queryData.sql_query,
-      explanation: queryData.explanation || '',
-      results: queryData.query_result ? JSON.parse(queryData.query_result) : [],
-      session_id: queryData.session_id || '',
-      title: queryData.title || queryData.natural_query,
-      timestamp: queryData.timestamp || new Date().toISOString(),
-      chart_data: queryData.chart_data || undefined,
-      chart_config: queryData.chart_config ? JSON.parse(queryData.chart_config) : undefined
-    };
-    
-    setResult(queryResult);
-    setActiveTab(0); // AI Analysis tab'ına geç
-  };
+  
 
   return (
     <Box minH="100vh" bg="gray.50">
@@ -444,23 +489,168 @@ function App() {
             </HStack>
             
             <HStack spacing={4}>
+              {/* Mobile menu button */}
+              {!isDesktop && (
+                <IconButton
+                  aria-label="Open sidebar"
+                  icon={<HamburgerIcon />}
+                  onClick={() => setSidebarOpen(true)}
+                  variant="ghost"
+                  size="sm"
+                />
+              )}
+              
+              {/* Desktop sidebar toggle */}
+              {isDesktop && (
               <Button
                 size="sm"
                 variant="ghost"
                 colorScheme="blue"
-                onClick={fetchHistory}
-                isLoading={loadingHistory}
+                  onClick={() => setSidebarCollapsed(!sidebarCollapsed)}
                 leftIcon={<Icon as={ViewIcon} />}
               >
-                History
+                  {sidebarCollapsed ? 'Show History' : 'Hide History'}
+                </Button>
+              )}
+              
+              <Button
+                size="sm"
+                variant="ghost"
+                colorScheme="green"
+                onClick={() => {
+                  console.log('Current history:', history);
+                  if (history.length > 0 && history[0].queries.length > 0) {
+                    console.log('Testing loadQueryFromHistory with:', history[0].queries[0]);
+                    loadQueryFromHistory(history[0].queries[0]);
+                  }
+                }}
+              >
+                Test Load
               </Button>
             </HStack>
           </HStack>
         </Container>
       </Box>
 
-      <Container maxW="7xl" py={8}>
-        {/* Main Content */}
+      {/* Main Layout with Sidebar */}
+      <Flex h="calc(100vh - 80px)">
+        {/* Desktop Sidebar */}
+        {isDesktop && (
+          <Box
+            w={sidebarCollapsed ? "60px" : "350px"}
+            bg="white"
+            borderRight="1px"
+            borderColor="gray.200"
+            transition="width 0.3s ease"
+            overflow="hidden"
+            position="relative"
+          >
+            {sidebarCollapsed ? (
+              // Collapsed sidebar
+              <VStack spacing={4} py={4} align="center">
+                <IconButton
+                  aria-label="Expand sidebar"
+                  icon={<ViewIcon />}
+                  onClick={() => setSidebarCollapsed(false)}
+                  variant="ghost"
+                  size="sm"
+                  colorScheme="blue"
+                />
+              </VStack>
+            ) : (
+              // Expanded sidebar
+              <VStack spacing={0} align="stretch" h="full">
+                {/* Sidebar Header */}
+                <Box 
+                  bg="gray.50" 
+                  px={6} 
+                  py={4} 
+                  borderBottom="1px" 
+                  borderColor="gray.200"
+                >
+                  <HStack justify="space-between" align="center">
+                    <Text fontSize="lg" fontWeight="semibold" color="gray.800">
+                      Query History
+                    </Text>
+                    <IconButton
+                      aria-label="Collapse sidebar"
+                      icon={<ViewIcon />}
+                      onClick={() => setSidebarCollapsed(true)}
+                      variant="ghost"
+                      size="sm"
+                      colorScheme="blue"
+                    />
+                  </HStack>
+                </Box>
+                
+                {/* History List */}
+                <Box flex={1} overflowY="auto" p={4}>
+                  {loadingHistory ? (
+                    <VStack spacing={4} py={8}>
+                      <Spinner size="md" color="blue.500" />
+                      <Text fontSize="sm" color="gray.600">Loading history...</Text>
+                    </VStack>
+                  ) : history.length > 0 ? (
+                    <VStack spacing={3} align="stretch">
+                      {history.flatMap(session => 
+                        session.queries.map((item, index) => (
+                          <Box
+                            key={`${session.id}-${index}`}
+                            p={3}
+                            bg={result?.session_id === item.session_id ? 'blue.50' : 'gray.50'}
+                            borderRadius="lg"
+                            cursor="pointer"
+                            onClick={() => {
+                              console.log('History item clicked:', item);
+                              loadQueryFromHistory(item);
+                            }}
+                            _hover={{ 
+                              bg: result?.session_id === item.session_id ? 'blue.100' : 'gray.100',
+                              transform: 'translateY(-1px)',
+                              boxShadow: '0 2px 8px rgba(0, 0, 0, 0.1)'
+                            }}
+                            transition="all 0.2s"
+                            border="1px"
+                            borderColor={result?.session_id === item.session_id ? 'blue.200' : 'gray.200'}
+                          >
+                            <VStack spacing={2} align="start">
+                              <Text fontSize="sm" fontWeight="medium" color="gray.800" noOfLines={2}>
+                                {item.natural_query}
+                              </Text>
+                              <HStack spacing={2} justify="space-between" w="full">
+                                <Badge colorScheme="blue" fontSize="xs" borderRadius="full" px={2} py={1}>
+                                  {new Date(item.timestamp).toLocaleDateString()}
+                                </Badge>
+                                {item.chart_data && (
+                                  <Badge colorScheme="green" fontSize="xs" borderRadius="full" px={2} py={1}>
+                                    Chart
+                                  </Badge>
+                                )}
+                              </HStack>
+                            </VStack>
+                          </Box>
+                        ))
+                      )}
+                    </VStack>
+                  ) : (
+                    <Box textAlign="center" py={8}>
+                      <Text color="gray.500" fontSize="sm">
+                        No queries yet
+                      </Text>
+                      <Text color="gray.400" fontSize="xs">
+                        Start asking questions to see history
+                      </Text>
+                    </Box>
+                  )}
+                </Box>
+              </VStack>
+            )}
+          </Box>
+        )}
+
+        {/* Main Content Area */}
+        <Box flex={1} overflowY="auto">
+          <Container maxW="6xl" py={8}>
         <VStack spacing={8} align="stretch">
           {/* Query Input Section */}
           <Box
@@ -562,199 +752,195 @@ function App() {
                 borderColor="gray.200"
               >
                 <VStack spacing={3} align="start">
-                  <HStack justify="space-between" w="full">
-                    <VStack spacing={1} align="start">
-                      <Text fontSize="lg" fontWeight="semibold" color="gray.800">
+                      <Text fontSize="xl" fontWeight="bold" color="gray.800">
                         {result.title}
                       </Text>
-                      <Text fontSize="sm" color="gray.600">
-                        Session: {result.session_id}
-                      </Text>
-                    </VStack>
-                    <HStack spacing={3}>
-                      <Button
-                        size="sm"
-                        variant="ghost"
-                        colorScheme="blue"
-                        onClick={generateChart}
-                        leftIcon={<ViewIcon />}
-                      >
-                        Generate Chart
-                      </Button>
-                      <Button
-                        size="sm"
-                        variant="ghost"
-                        colorScheme="gray"
-                        onClick={() => {
-                          navigator.clipboard.writeText(result.sql_query);
-                          toast({
-                            title: "SQL Copied!",
-                            status: "success",
-                            duration: 2000,
-                            isClosable: true,
-                          });
-                        }}
-                        leftIcon={<CopyIcon />}
-                      >
-                        Copy SQL
-                      </Button>
-                    </HStack>
+                      <HStack spacing={4} wrap="wrap">
+                        <Badge colorScheme="blue" fontSize="sm" borderRadius="full" px={3} py={1}>
+                          {new Date(result.timestamp).toLocaleDateString()}
+                        </Badge>
+                        {result.chart_data && (
+                          <Badge colorScheme="green" fontSize="sm" borderRadius="full" px={3} py={1}>
+                            Visualization Available
+                          </Badge>
+                        )}
+                        <Badge colorScheme="purple" fontSize="sm" borderRadius="full" px={3} py={1}>
+                          {result.results.length} results
+                        </Badge>
                   </HStack>
                 </VStack>
               </Box>
 
-              {/* Tabs for Results, Explanation, and Chart */}
-              <Tabs index={activeTab} onChange={setActiveTab} variant="enclosed" colorScheme="blue">
+                  {/* Result Tabs */}
+                  <Tabs index={activeTab} onChange={setActiveTab} colorScheme="blue">
                 <TabList bg="gray.50" px={8} pt={4}>
                   <Tab 
                     _selected={{ 
-                      bg: "white", 
-                      borderBottomColor: "white",
                       color: "blue.600",
+                          borderColor: "blue.600",
                       fontWeight: "semibold"
                     }}
-                    _hover={{ bg: "gray.100" }}
-                    borderRadius="lg"
-                    mr={2}
                   >
-                    Analysis
+                        AI Analysis
                   </Tab>
                   <Tab 
                     _selected={{ 
-                      bg: "white", 
-                      borderBottomColor: "white",
                       color: "blue.600",
+                          borderColor: "blue.600",
                       fontWeight: "semibold"
                     }}
-                    _hover={{ bg: "gray.100" }}
-                    borderRadius="lg"
-                    mr={2}
                   >
-                    Results
+                        SQL Query
                   </Tab>
                   <Tab 
                     _selected={{ 
-                      bg: "white", 
-                      borderBottomColor: "white",
                       color: "blue.600",
+                          borderColor: "blue.600",
                       fontWeight: "semibold"
                     }}
-                    _hover={{ bg: "gray.100" }}
-                    borderRadius="lg"
-                  >
-                    Charts
+                      >
+                        Data Results
+                      </Tab>
+                      <Tab 
+                        _selected={{ 
+                          color: "blue.600", 
+                          borderColor: "blue.600",
+                          fontWeight: "semibold"
+                        }}
+                      >
+                        Data Visualization
                   </Tab>
                 </TabList>
 
                 <TabPanels>
-                  {/* AI Analysis & Explanation */}
+                      {/* AI Analysis */}
                   <TabPanel p={8}>
                     <VStack spacing={6} align="stretch">
                       <Box>
                         <Text fontSize="lg" fontWeight="semibold" color="gray.800" mb={3}>
-                          AI Analysis
+                              Natural Language Query
                         </Text>
                         <Box
                           bg="gray.50"
-                          p={6}
-                          borderRadius="xl"
+                              p={4}
+                              borderRadius="lg"
                           border="1px"
                           borderColor="gray.200"
+                            >
+                              <Text color="gray.700">{result.natural_query}</Text>
+                            </Box>
+                          </Box>
+
+                          <Box>
+                            <Text fontSize="lg" fontWeight="semibold" color="gray.800" mb={3}>
+                              AI Explanation
+                            </Text>
+                            <Box
+                              bg="blue.50"
+                              p={4}
+                              borderRadius="lg"
+                              border="1px"
+                              borderColor="blue.200"
                         >
                           <ReactMarkdown
                             components={{
-                              code: ({ className, children, ...props }) => {
-                                const match = /language-(\w+)/.exec(className || '');
+                                  code({node, className, children, ...props}: any) {
+                                    const match = /language-(\w+)/.exec(className || '')
                                 return match ? (
                                   <SyntaxHighlighter
                                     style={atomDark}
                                     language={match[1]}
                                     PreTag="div"
+                                        customStyle={{}}
+                                        {...props}
                                   >
                                     {String(children).replace(/\n$/, '')}
                                   </SyntaxHighlighter>
                                 ) : (
-                                  <Code
-                                    className={className}
-                                    bg="blue.50"
-                                    color="blue.800"
-                                    px={2}
-                                    py={1}
-                                    borderRadius="md"
-                                    fontSize="sm"
-                                    {...props}
-                                  >
+                                      <code className={className} {...props}>
                                     {children}
-                                  </Code>
-                                );
-                              },
+                                      </code>
+                                    )
+                                  }
                             }}
                           >
                             {result.explanation}
                           </ReactMarkdown>
                         </Box>
                       </Box>
+                        </VStack>
+                      </TabPanel>
 
-                      <Box>
-                        <Text fontSize="lg" fontWeight="semibold" color="gray.800" mb={3}>
-                          Generated SQL
+                      {/* SQL Query */}
+                      <TabPanel p={8}>
+                        <VStack spacing={4} align="stretch">
+                          <HStack justify="space-between" align="center">
+                            <Text fontSize="lg" fontWeight="semibold" color="gray.800">
+                              Generated SQL Query
                         </Text>
-                        <Box
-                          bg="gray.900"
-                          p={6}
-                          borderRadius="xl"
-                          position="relative"
-                        >
+                            <HStack spacing={2}>
                           <Button
                             size="sm"
-                            position="absolute"
-                            top={4}
-                            right={4}
+                                variant="outline"
+                                colorScheme="blue"
                             onClick={() => {
                               navigator.clipboard.writeText(result.sql_query);
                               toast({
-                                title: "SQL Copied!",
+                                    title: "SQL copied!",
+                                    description: "SQL query copied to clipboard",
                                 status: "success",
                                 duration: 2000,
                                 isClosable: true,
                               });
                             }}
-                            leftIcon={<CopyIcon />}
-                            colorScheme="gray"
-                            variant="ghost"
+                                leftIcon={<Icon as={CopyIcon} />}
                           >
-                            Copy
+                                Copy SQL
                           </Button>
+                            </HStack>
+                          </HStack>
+                          
+                          <Box
+                            bg="gray.900"
+                            p={4}
+                            borderRadius="lg"
+                            overflow="auto"
+                            maxH="400px"
+                          >
                           <SyntaxHighlighter
                             style={atomDark}
                             language="sql"
                             customStyle={{
                               margin: 0,
-                              background: "transparent",
-                              fontSize: "14px"
+                                backgroundColor: 'transparent',
+                                fontSize: '14px'
                             }}
                           >
                             {result.sql_query}
                           </SyntaxHighlighter>
-                        </Box>
                       </Box>
                     </VStack>
                   </TabPanel>
 
-                  {/* Query Results */}
+                      {/* Data Results */}
                   <TabPanel p={8}>
-                    <VStack spacing={6} align="stretch">
+                        <VStack spacing={4} align="stretch">
+                          <HStack justify="space-between" align="center">
                       <Text fontSize="lg" fontWeight="semibold" color="gray.800">
                         Query Results
                       </Text>
+                            <Text fontSize="sm" color="gray.600">
+                              {result.results.length} rows returned
+                            </Text>
+                          </HStack>
                       
-                      {result.results && result.results.length > 0 ? (
+                          {result.results.length > 0 ? (
                         <Box
-                          bg="gray.50"
-                          borderRadius="xl"
-                          overflow="hidden"
+                              overflow="auto"
+                              maxH="500px"
                           border="1px"
                           borderColor="gray.200"
+                              borderRadius="lg"
                         >
                           <Table variant="simple" bg="white">
                             <Thead bg="gray.100">
@@ -797,82 +983,86 @@ function App() {
               </Tabs>
             </Box>
           )}
-          {/* History Section */}
-          {history.length > 0 && (
-            <Box
-              bg="white"
-              borderRadius="2xl"
-              overflow="hidden"
-              boxShadow="0 4px 20px rgba(0, 0, 0, 0.08)"
-              border="1px"
-              borderColor="gray.100"
-            >
-              <Box 
-                bg="gray.50" 
-                px={8} 
-                py={6} 
-                borderBottom="1px" 
-                borderColor="gray.200"
-              >
-                <HStack justify="space-between" align="center">
-                  <Text fontSize="lg" fontWeight="semibold" color="gray.800">
-                    Recent Queries
-                  </Text>
-                  <Text fontSize="sm" color="gray.600">
-                    {history.length} sessions
-                  </Text>
-                </HStack>
+            </VStack>
+          </Container>
               </Box>
-              
-              <Box p={8}>
-                <VStack spacing={4} align="stretch">
+      </Flex>
+
+      {/* Mobile Sidebar Drawer */}
+      <Drawer
+        isOpen={sidebarOpen}
+        placement="left"
+        onClose={() => setSidebarOpen(false)}
+        size="xs"
+      >
+        <DrawerOverlay />
+        <DrawerContent>
+          <DrawerCloseButton />
+          <DrawerHeader bg="gray.50" borderBottom="1px" borderColor="gray.200">
+            Query History
+          </DrawerHeader>
+          <DrawerBody p={4}>
+            {loadingHistory ? (
+              <VStack spacing={4} py={8}>
+                <Spinner size="md" color="blue.500" />
+                <Text fontSize="sm" color="gray.600">Loading history...</Text>
+              </VStack>
+            ) : history.length > 0 ? (
+              <VStack spacing={3} align="stretch">
                   {history.flatMap(session => 
                     session.queries.map((item, index) => (
                       <Box
                         key={`${session.id}-${index}`}
-                        p={4}
+                      p={3}
                         bg={result?.session_id === item.session_id ? 'blue.50' : 'gray.50'}
-                        borderRadius="xl"
+                      borderRadius="lg"
                         cursor="pointer"
-                        onClick={() => loadQueryFromHistory(item)}
+                      onClick={() => {
+                        console.log('History item clicked:', item);
+                        loadQueryFromHistory(item);
+                        setSidebarOpen(false); // Close drawer after selection
+                      }}
                         _hover={{ 
                           bg: result?.session_id === item.session_id ? 'blue.100' : 'gray.100',
-                          transform: 'translateY(-2px)',
-                          boxShadow: '0 4px 12px rgba(0, 0, 0, 0.1)'
+                        transform: 'translateY(-1px)',
+                        boxShadow: '0 2px 8px rgba(0, 0, 0, 0.1)'
                         }}
                         transition="all 0.2s"
                         border="1px"
                         borderColor={result?.session_id === item.session_id ? 'blue.200' : 'gray.200'}
                       >
-                        <VStack spacing={3} align="start">
-                          <Text fontSize="md" fontWeight="medium" color="gray.800" noOfLines={2}>
+                      <VStack spacing={2} align="start">
+                        <Text fontSize="sm" fontWeight="medium" color="gray.800" noOfLines={2}>
                             {item.natural_query}
                           </Text>
-                          <HStack spacing={3} justify="space-between" w="full">
-                            <HStack spacing={2}>
-                              <Badge colorScheme="blue" fontSize="xs" borderRadius="full" px={3} py={1}>
+                        <HStack spacing={2} justify="space-between" w="full">
+                          <Badge colorScheme="blue" fontSize="xs" borderRadius="full" px={2} py={1}>
                                 {new Date(item.timestamp).toLocaleDateString()}
                               </Badge>
                               {item.chart_data && (
-                                <Badge colorScheme="green" fontSize="xs" borderRadius="full" px={3} py={1}>
+                            <Badge colorScheme="green" fontSize="xs" borderRadius="full" px={2} py={1}>
                                   Chart
                                 </Badge>
                               )}
-                            </HStack>
-                            <Text fontSize="xs" color="gray.500">
-                              {new Date(item.timestamp).toLocaleTimeString()}
-                            </Text>
                           </HStack>
                         </VStack>
                       </Box>
                     ))
                   )}
                 </VStack>
-              </Box>
+            ) : (
+              <Box textAlign="center" py={8}>
+                <Text color="gray.500" fontSize="sm">
+                  No queries yet
+                </Text>
+                <Text color="gray.400" fontSize="xs">
+                  Start asking questions to see history
+                </Text>
             </Box>
           )}
-        </VStack>
-      </Container>
+          </DrawerBody>
+        </DrawerContent>
+      </Drawer>
 
       {/* Chart Modal */}
       <Modal isOpen={isOpen} onClose={onClose} size="6xl">
