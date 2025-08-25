@@ -8,6 +8,7 @@ This API provides endpoints:
 """
 from typing import Dict, List, Any, Optional, Tuple
 import logging
+import time
 from fastapi import FastAPI, Request, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
@@ -137,16 +138,52 @@ class ChartRequest(BaseModel):
     x_column: Optional[str] = None
     y_column: Optional[str] = None
 
+# Global duplicate request tracking
+import hashlib
+_request_cache = {}
+_REQUEST_CACHE_TTL = 5  # 5 saniye
+
+def _get_request_hash(request: Request) -> str:
+    """Request için unique hash oluşturur"""
+    # IP + User-Agent + timestamp (5 saniye granularity)
+    timestamp = int(time.time() / _REQUEST_CACHE_TTL)
+    content = f"{request.client.host}:{request.headers.get('user-agent', '')}:{timestamp}"
+    return hashlib.md5(content.encode()).hexdigest()
+
+def _is_duplicate_request(request: Request, endpoint: str) -> bool:
+    """Request'in duplicate olup olmadığını kontrol eder"""
+    global _request_cache
+    
+    request_hash = _get_request_hash(request)
+    cache_key = f"{endpoint}:{request_hash}"
+    
+    current_time = time.time()
+    
+    # Cache'den eski kayıtları temizle
+    _request_cache = {k: v for k, v in _request_cache.items() 
+                     if current_time - v < _REQUEST_CACHE_TTL}
+    
+    if cache_key in _request_cache:
+        return True
+    
+    _request_cache[cache_key] = current_time
+    return False
+
 @app.get("/sessions")
-async def get_sessions():
+async def get_sessions(request: Request):
     """Get all query sessions from SQLite database"""
     try:
         from query_history import get_all_sessions
         # Doğrudan query_history modülünün fonksiyonunu kullanalım
         sessions = get_all_sessions()
         
-        # Logla ve cevap döndür
-        logger.info(f"Returned {len(sessions)} sessions with total {sum(len(s['queries']) for s in sessions)} queries")
+        # Sadece ilk çağrıda log yaz, sonraki çağrılarda minimal log
+        sessions_count = len(sessions)
+        total_queries = sum(len(s['queries']) for s in sessions)
+        
+        # Minimal logging - sadece session count değiştiğinde log yaz
+        logger.info(f"Sessions endpoint called - {sessions_count} sessions, {total_queries} queries")
+        
         return JSONResponse(content=sessions)
     except Exception as e:
         logger.error(f"Error getting sessions: {e}", exc_info=True)

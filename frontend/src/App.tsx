@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import {
   Box,
   Button,
@@ -96,24 +96,62 @@ function App() {
   // Responsive sidebar state
   const isDesktop = useBreakpointValue({ base: false, lg: true });
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
+  
+  // Duplicate API çağrılarını önlemek için useRef ve debouncing
+  const isFetching = useRef(false);
+  const lastFetchTime = useRef(0);
+  const FETCH_COOLDOWN = 2000; // 2 saniye bekleme süresi
+  const fetchQueue = useRef<Array<() => void>>([]);
 
   const fetchHistory = async () => {
+    const now = Date.now();
+    
+    // Eğer zaten fetch yapılıyorsa, yeni çağrıyı queue'ya ekle
+    if (isFetching.current) {
+      console.log('Fetch in progress, queuing request');
+      return new Promise<void>((resolve) => {
+        fetchQueue.current.push(resolve);
+      });
+    }
+    
+    // Eğer çok kısa süre önce fetch yapıldıysa, yeni çağrı yapma
+    if ((now - lastFetchTime.current) < FETCH_COOLDOWN) {
+      console.log('Fetch skipped - cooldown active, last fetch was', Math.round((now - lastFetchTime.current) / 1000), 'seconds ago');
+      return;
+    }
+    
+    isFetching.current = true;
+    lastFetchTime.current = now;
+    
+    console.log('Fetching history...', new Date().toISOString());
+    
     setLoadingHistory(true)
     try {
       // Direkt API_URL kullan
       const response = await axios.get(`${API_URL}/sessions`);
       setHistory(response.data)
+      console.log('History fetched successfully');
     } catch (error) {
       console.error('Error fetching history:', error)
     } finally {
       setLoadingHistory(false)
+      isFetching.current = false
+      
+      // Queue'daki bekleyen request'leri işle
+      if (fetchQueue.current.length > 0) {
+        const nextRequest = fetchQueue.current.shift();
+        if (nextRequest) {
+          console.log('Processing queued request');
+          nextRequest();
+        }
+      }
     }
   }
 
   useEffect(() => {
     fetchHistory()
-    // Her 30 saniyede bir geçmişi güncelle
-    const interval = setInterval(fetchHistory, 30000)
+    // Her 120 saniyede bir geçmişi güncelle (çok daha az sıklıkta)
+    const interval = setInterval(fetchHistory, 120000)
     return () => clearInterval(interval)
   }, [])
 
@@ -154,7 +192,7 @@ function App() {
       // Check-and-execute response içindeki data nesnesini (ExecuteSQLResponse) almalıyız
       setResult(response.data.data)
       setQuery('')
-      fetchHistory()
+      // fetchHistory() kaldırıldı - otomatik güncelleme zaten var
       
       // Show success message
       toast({

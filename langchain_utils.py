@@ -144,8 +144,8 @@ def create_langchain_pipeline() -> LLMChain:
     
     # Initialize LLM
     llm = ChatOpenAI(
-        model="gpt-4o",
-        temperature=0.1,
+        model="gpt-5-nano",
+        temperature=1.0,
         api_key=os.getenv("OPENAI_API_KEY")
     )
     
@@ -180,6 +180,30 @@ Generate a SQL query and provide a detailed explanation. Format your response as
 
 **Chart Recommendation:**
 [Suggest what type of chart would be best for this data, if applicable]
+
+**Enhanced Analysis for Simple Queries:**
+If the user asks for a simple count or aggregation (like "kaç çalışan var", "how many employees", "toplam müşteri sayısı"), provide additional insights and suggest multiple visualizations:
+
+1. **Main KPI Display**: Show the total number prominently with context
+2. **Distribution Analysis**: Break down by relevant categories (status, department, location, type)
+3. **Comparison Charts**: Compare different groups or categories
+4. **Trend Analysis**: If time data exists, suggest showing changes over time
+5. **Related Metrics**: Provide additional context and related statistics
+
+**Example Enhanced Response for "kaç çalışan var":**
+- Total Employees: 3,000
+- Active Employees: 2,458 (81.9%)
+- Department Distribution: Field Operations (634), General-Con (411), Engineers (223)
+- Regional Distribution: Top states and their employee counts
+- Performance Distribution: Performance scores across the workforce
+- Employee Types: Full-time, Contract, Part-time breakdown
+
+**Suggested Charts for Simple Queries:**
+1. **KPI Dashboard**: Main numbers with visual emphasis
+2. **Distribution Chart**: Pie chart for status/type distribution
+3. **Comparison Chart**: Horizontal bar chart for department breakdown
+4. **Regional Chart**: Bar chart for geographic distribution
+5. **Performance Chart**: Distribution of performance scores
 
 Remember:
 - Only use SELECT queries (data safety first!)
@@ -312,8 +336,8 @@ Provide a natural, conversational analysis that:
 Keep it conversational and helpful!"""
 
     llm = ChatOpenAI(
-        model="gpt-4o",
-        temperature=0.7,
+        model="gpt-5-nano",
+        temperature=1.0,
         api_key=os.getenv("OPENAI_API_KEY")
     )
     
@@ -322,7 +346,7 @@ Keep it conversational and helpful!"""
 
 
 def detect_chart_type(query: str, results: List[Dict[str, Any]]) -> Dict[str, Any]:
-    """Detect the best chart type for the data"""
+    """Detect the best chart type for the data with enhanced analysis for simple queries"""
     
     if not results or len(results) == 0:
         return {"chart_type": "none", "reason": "No data available"}
@@ -331,14 +355,44 @@ def detect_chart_type(query: str, results: List[Dict[str, Any]]) -> Dict[str, An
     sample_row = results[0]
     columns = list(sample_row.keys())
     
-    # Create chart detection prompt
-    chart_prompt = f"""Analyze this data and suggest the best chart type:
+    # Check if this is a simple count/aggregation query that could benefit from enhanced analysis
+    is_simple_query = False
+    enhanced_analysis_needed = False
+    
+    # Detect simple queries like "kaç çalışan var", "how many employees", etc.
+    simple_query_patterns = [
+        "kaç", "how many", "count", "total", "number of", "adet", "tane",
+        "çalışan", "employee", "müşteri", "customer", "ürün", "product",
+        "toplam", "sum", "amount", "quantity"
+    ]
+    
+    query_lower = query.lower()
+    if any(pattern in query_lower for pattern in simple_query_patterns):
+        is_simple_query = True
+        # If result is just a single number, suggest enhanced analysis
+        if len(results) == 1 and len(columns) == 1:
+            enhanced_analysis_needed = True
+    
+    # Create enhanced chart detection prompt
+    chart_prompt = f"""Analyze this data and suggest the best chart type with enhanced analysis:
 
 Query: {query}
 Columns: {columns}
 Sample data: {results[:3]}
+Is simple count query: {is_simple_query}
+Enhanced analysis needed: {enhanced_analysis_needed}
 
 Based on the query and data structure, suggest the most appropriate visualization. Consider:
+
+FOR SIMPLE COUNT QUERIES (like "kaç çalışan var"):
+- If result is just a number, suggest MULTIPLE charts to provide context:
+  1. Main KPI display (big number with context)
+  2. Distribution chart (pie/bar) if related data exists
+  3. Comparison chart (bar) for categories
+  4. Trend chart if time data exists
+  5. Regional/geographic chart if location data exists
+
+FOR REGULAR QUERIES:
 - If query asks for "distribution" or "percentage" → pie chart
 - If query asks for "comparison" or "ranking" → bar chart  
 - If query asks for "trend" or "over time" → line chart
@@ -347,19 +401,21 @@ Based on the query and data structure, suggest the most appropriate visualizatio
 
 Return JSON with:
 {{
-    "chart_type": "pie|bar|line|scatter|table|none",
+    "chart_type": "pie|bar|line|scatter|table|enhanced_dashboard|none",
     "title": "Chart title",
     "x_column": "column name for x-axis",
     "y_column": "column name for y-axis", 
     "color_column": "column for color coding",
-    "reason": "Why this chart type is best"
+    "reason": "Why this chart type is best",
+    "enhanced_analysis": true/false,
+    "suggested_charts": ["list of additional chart types to create"]
 }}
 
 Only return valid JSON."""
 
     llm = ChatOpenAI(
-        model="gpt-4o",
-        temperature=0.1,
+        model="gpt-5-nano",
+        temperature=1.0,
         api_key=os.getenv("OPENAI_API_KEY")
     )
     
@@ -436,6 +492,9 @@ def generate_chart(results: List[Dict[str, Any]], chart_config: Dict[str, Any]) 
                 color=chart_config.get("color_column")
             )
             
+        elif chart_config["chart_type"] == "enhanced_dashboard":
+            # Enhanced dashboard for simple queries - create multiple charts
+            return generate_enhanced_dashboard(results, chart_config)
         else:
             # Default to table view
             return None
@@ -461,6 +520,105 @@ def generate_chart(results: List[Dict[str, Any]], chart_config: Dict[str, Any]) 
         
     except Exception as e:
         logger.error(f"Error generating chart: {e}")
+        return None
+
+
+def generate_enhanced_dashboard(results: List[Dict[str, Any]], chart_config: Dict[str, Any]) -> str:
+    """Generate enhanced dashboard for simple queries with multiple visualizations"""
+    
+    try:
+        # Convert results to DataFrame
+        df = pd.DataFrame(results)
+        
+        # Create a comprehensive dashboard with multiple charts
+        fig = make_subplots(
+            rows=2, cols=2,
+            subplot_titles=('Main KPI', 'Distribution', 'Comparison', 'Details'),
+            specs=[[{"type": "indicator"}, {"type": "pie"}],
+                   [{"type": "bar"}, {"type": "table"}]]
+        )
+        
+        # Main KPI (big number display)
+        if len(results) == 1 and len(df.columns) == 1:
+            main_value = results[0][list(df.columns)[0]]
+            fig.add_trace(
+                go.Indicator(
+                    mode="number+delta",
+                    value=main_value,
+                    title={"text": "Total Count"},
+                    delta={"reference": 0},
+                    number={"font": {"size": 40}}
+                ),
+                row=1, col=1
+            )
+        
+        # Distribution chart (pie chart)
+        if len(df.columns) >= 2:
+            try:
+                # Try to create pie chart from first two columns
+                fig.add_trace(
+                    go.Pie(
+                        labels=df.iloc[:, 0],
+                        values=df.iloc[:, 1] if len(df.columns) > 1 else [1] * len(df),
+                        name="Distribution"
+                    ),
+                    row=1, col=2
+                )
+            except:
+                pass
+        
+        # Comparison chart (bar chart)
+        if len(df.columns) >= 2:
+            try:
+                fig.add_trace(
+                    go.Bar(
+                        x=df.iloc[:, 0],
+                        y=df.iloc[:, 1] if len(df.columns) > 1 else [1] * len(df),
+                        name="Comparison"
+                    ),
+                    row=2, col=1
+                )
+            except:
+                pass
+        
+        # Details table
+        fig.add_trace(
+            go.Table(
+                header=dict(values=list(df.columns)),
+                cells=dict(values=[df[col] for col in df.columns])
+            ),
+            row=2, col=2
+        )
+        
+        # Update layout
+        fig.update_layout(
+            height=800,
+            title_text="Enhanced Dashboard Analysis",
+            showlegend=False
+        )
+        
+        # Convert to PNG
+        try:
+            img_bytes = fig.to_image(format="png", engine="kaleido")
+            img_base64 = base64.b64encode(img_bytes).decode()
+            return f"data:image/png;base64,{img_base64}"
+        except Exception as e:
+            logger.warning(f"Kaleido export failed: {e}, falling back to HTML")
+            # Fallback to HTML
+            html_string = fig.to_html(include_plotlyjs=False, full_html=False)
+            dashboard_info = {
+                "chart_type": "enhanced_dashboard",
+                "title": "Enhanced Dashboard Analysis",
+                "data_points": len(results),
+                "columns": list(df.columns),
+                "html": html_string,
+                "fallback": True,
+                "enhanced_analysis": True
+            }
+            return json.dumps(dashboard_info)
+        
+    except Exception as e:
+        logger.error(f"Error generating enhanced dashboard: {e}")
         return None
 
 
@@ -492,8 +650,8 @@ Return JSON with:
 Only return valid JSON."""
 
     llm = ChatOpenAI(
-        model="gpt-4o",
-        temperature=0.1,
+        model="gpt-5-nano",
+        temperature=1.0,
         api_key=os.getenv("OPENAI_API_KEY")
     )
     

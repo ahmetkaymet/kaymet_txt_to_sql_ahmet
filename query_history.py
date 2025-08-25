@@ -57,6 +57,11 @@ def initialize_history_db():
             except sqlite3.OperationalError:
                 pass  # Column already exists
                 
+            try:
+                conn.execute("ALTER TABLE query_history ADD COLUMN username TEXT")
+            except sqlite3.OperationalError:
+                pass  # Column already exists
+                
             conn.commit()
             logger.info("Database initialized successfully")
             
@@ -165,6 +170,15 @@ def get_all_sessions() -> List[Dict[str, Any]]:
                         except:
                             query["chart_config"] = {}
                     
+                    # Username ekle - güvenli şekilde
+                    try:
+                        if 'username' in columns and row['username']:
+                            query["username"] = row['username']
+                        else:
+                            query["username"] = "unknown"
+                    except (KeyError, IndexError):
+                        query["username"] = "unknown"
+                    
                     queries.append(query)
                 
                 if queries:  # Sorgu varsa session'ı ekle
@@ -180,7 +194,7 @@ def get_all_sessions() -> List[Dict[str, Any]]:
         logger.error(f"Error getting sessions from database: {e}", exc_info=True)
         return []
 
-def save_query_history(session_id: str, natural_query: str, sql_query: str, query_result: str, explanation: str = None, title: str = None, chart_data: str = None, chart_config: str = None) -> bool:
+def save_query_history(session_id: str, natural_query: str, sql_query: str, query_result: str, explanation: str = None, title: str = None, chart_data: str = None, chart_config: str = None, username: str = None) -> bool:
     """Save a query to the history database with duplicate prevention"""
     try:
         initialize_history_db()
@@ -203,16 +217,16 @@ def save_query_history(session_id: str, natural_query: str, sql_query: str, quer
                 logger.info(f"Updating existing query record {existing['id']} instead of creating duplicate")
                 cursor.execute("""
                     UPDATE query_history 
-                    SET query_result = ?, explanation = ?, title = ?, chart_data = ?, chart_config = ?, timestamp = CURRENT_TIMESTAMP
+                    SET query_result = ?, explanation = ?, title = ?, chart_data = ?, chart_config = ?, username = ?, timestamp = CURRENT_TIMESTAMP
                     WHERE id = ?
-                """, (query_result, explanation, title, chart_data, chart_config, existing['id']))
+                """, (query_result, explanation, title, chart_data, chart_config, username, existing['id']))
             else:
                 # Insert new record
                 logger.info(f"Inserting new query record for session {session_id}")
                 cursor.execute("""
-                    INSERT INTO query_history (session_id, natural_query, sql_query, query_result, explanation, title, chart_data, chart_config)
-                    VALUES (?, ?, ?, ?, ?, ?, ?, ?)
-                """, (session_id, natural_query, sql_query, query_result, explanation, title, chart_data, chart_config))
+                    INSERT INTO query_history (session_id, natural_query, sql_query, query_result, explanation, title, chart_data, chart_config, username)
+                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+                """, (session_id, natural_query, sql_query, query_result, explanation, title, chart_data, chart_config, username))
             
             conn.commit()
             logger.info(f"Query saved successfully for session: {session_id}")
