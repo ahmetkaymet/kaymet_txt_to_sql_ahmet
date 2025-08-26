@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef, useCallback } from 'react';
 import {
   Box,
   Button,
@@ -72,6 +72,7 @@ interface QueryResult {
   timestamp: string
   chart_data?: string
   chart_config?: any
+  chart_generating?: boolean
 }
 
 interface HistoryItem {
@@ -150,8 +151,8 @@ function App() {
 
   useEffect(() => {
     fetchHistory()
-    // Her 120 saniyede bir geçmişi güncelle (çok daha az sıklıkta)
-    const interval = setInterval(fetchHistory, 120000)
+    // Her 5 dakikada bir geçmişi güncelle (daha az sıklıkta)
+    const interval = setInterval(fetchHistory, 300000)
     return () => clearInterval(interval)
   }, [])
 
@@ -190,14 +191,34 @@ function App() {
       }
       
       // Check-and-execute response içindeki data nesnesini (ExecuteSQLResponse) almalıyız
-      setResult(response.data.data)
-      setQuery('')
-      // fetchHistory() kaldırıldı - otomatik güncelleme zaten var
+      const resultData = response.data.data;
+      console.log('Full response:', response.data);
+      console.log('Result data:', resultData);
+      console.log('Result data type:', typeof resultData);
+      console.log('Result data keys:', resultData ? Object.keys(resultData) : 'No data');
+      
+      // Ensure all required fields are present
+      const processedResult = {
+        natural_query: resultData?.natural_query || '',
+        sql_query: resultData?.sql_query || '',
+        explanation: resultData?.explanation || '',
+        results: resultData?.results || [],
+        session_id: resultData?.session_id || '',
+        title: resultData?.title || '',
+        timestamp: resultData?.timestamp || new Date().toISOString(),
+        chart_data: resultData?.chart_data || undefined,
+        chart_config: resultData?.chart_config || {}
+      };
+      
+      console.log('Processed result:', processedResult);
+      
+      setResult(processedResult);
+      setQuery('');
       
       // Show success message
       toast({
         title: 'Query Executed Successfully',
-        description: `Found ${response.data.data.results.length} results`,
+        description: `Found ${processedResult.results.length} results`,
         status: 'success',
         duration: 3000,
         isClosable: true,
@@ -217,8 +238,11 @@ function App() {
     }
   }
 
-  const generateChart = async () => {
+  const generateChart = useCallback(async () => {
     if (!result) return;
+    
+    // Show loading state
+    setResult(prev => prev ? { ...prev, chart_generating: true } : null);
     
     try {
       const response = await axios.post(`${API_URL}/chart`, {
@@ -232,7 +256,8 @@ function App() {
         setResult(prev => prev ? {
           ...prev,
           chart_data: response.data.chart_data,
-          chart_config: response.data.chart_config
+          chart_config: response.data.chart_config,
+          chart_generating: false
         } : null);
         
         toast({
@@ -243,6 +268,7 @@ function App() {
           isClosable: true,
         });
       } else {
+        setResult(prev => prev ? { ...prev, chart_generating: false } : null);
         toast({
           title: "Chart Generation Failed",
           description: response.data.message,
@@ -253,6 +279,7 @@ function App() {
       }
     } catch (error) {
       console.error('Error generating chart:', error);
+      setResult(prev => prev ? { ...prev, chart_generating: false } : null);
       toast({
         title: "Error",
         description: "Failed to generate chart",
@@ -261,7 +288,7 @@ function App() {
         isClosable: true,
       });
     }
-  };
+  }, [result]);
 
   const loadQueryFromHistory = (queryData: any) => {
     console.log('Loading query from history:', queryData);
@@ -319,6 +346,8 @@ function App() {
             colorScheme="blue" 
             onClick={generateChart}
             leftIcon={<ViewIcon />}
+            isLoading={result?.chart_generating}
+            loadingText="Generating..."
           >
             Generate Chart
           </Button>
@@ -699,51 +728,100 @@ function App() {
             border="1px"
             borderColor="gray.100"
           >
-            <VStack spacing={6} align="stretch">
-              <VStack spacing={2} align="start">
-                <Text fontSize="lg" fontWeight="semibold" color="gray.800">
-                  Ask me anything about your data
-                </Text>
-                <Text fontSize="sm" color="gray.600">
-                  Describe what you want to know in natural language
-                </Text>
+              <VStack spacing={6} align="stretch">
+                <VStack spacing={2} align="start">
+                  <Text fontSize="lg" fontWeight="semibold" color="gray.800">
+                    Ask me anything about your HR data
+                  </Text>
+                  <Text fontSize="sm" color="gray.600">
+                    Describe what you want to know about your HR data in natural language
+                  </Text>
+                </VStack>
+                
+                {/* HR Quick Query Examples */}
+                <Box>
+                  <Text fontSize="sm" fontWeight="medium" color="gray.700" mb={3}>
+                    Quick HR Analytics:
+                  </Text>
+                  <HStack spacing={2} wrap="wrap">
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      colorScheme="blue"
+                      onClick={() => setQuery("Show me employee count by department")}
+                    >
+                      Employee Count by Dept
+                    </Button>
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      colorScheme="green"
+                      onClick={() => setQuery("What is the average salary by position?")}
+                    >
+                      Salary by Position
+                    </Button>
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      colorScheme="purple"
+                      onClick={() => setQuery("Analyze employee engagement scores by department")}
+                    >
+                      Engagement Analysis
+                    </Button>
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      colorScheme="orange"
+                      onClick={() => setQuery("Show me training completion rates")}
+                    >
+                      Training Metrics
+                    </Button>
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      colorScheme="teal"
+                      onClick={() => setQuery("What is the employee turnover rate by department?")}
+                    >
+                      Turnover Analysis
+                    </Button>
+                  </HStack>
+                </Box>
+                
+                <HStack spacing={4}>
+                  <Input
+                    placeholder="e.g., Show me employee count by department, Find average salary by position, Analyze engagement scores..."
+                    value={query}
+                    onChange={(e) => setQuery(e.target.value)}
+                    size="lg"
+                    borderRadius="xl"
+                    border="2px"
+                    borderColor="gray.200"
+                    _focus={{
+                      borderColor: "blue.400",
+                      boxShadow: "0 0 0 3px rgba(66, 153, 225, 0.1)"
+                    }}
+                    _hover={{ borderColor: "gray.300" }}
+                    onKeyPress={(e) => e.key === 'Enter' && handleSubmit()}
+                  />
+                  <Button
+                    colorScheme="blue"
+                    size="lg"
+                    px={8}
+                    borderRadius="xl"
+                    onClick={handleSubmit}
+                    isLoading={loading}
+                    loadingText="Analyzing..."
+                    bg="linear-gradient(135deg, #667eea 0%, #764ba2 100%)"
+                    _hover={{
+                      transform: "translateY(-2px)",
+                      boxShadow: "0 8px 25px rgba(102, 126, 234, 0.4)"
+                    }}
+                    transition="all 0.2s"
+                  >
+                    Execute
+                  </Button>
+                </HStack>
               </VStack>
-              
-              <HStack spacing={4}>
-                <Input
-                  placeholder="e.g., Show me sales by state, Find all stores in New York..."
-                  value={query}
-                  onChange={(e) => setQuery(e.target.value)}
-                  size="lg"
-                  borderRadius="xl"
-                  border="2px"
-                  borderColor="gray.200"
-                  _focus={{
-                    borderColor: "blue.400",
-                    boxShadow: "0 0 0 3px rgba(66, 153, 225, 0.1)"
-                  }}
-                  _hover={{ borderColor: "gray.300" }}
-                  onKeyPress={(e) => e.key === 'Enter' && handleSubmit()}
-                />
-                <Button
-                  colorScheme="blue"
-                  size="lg"
-                  px={8}
-                  borderRadius="xl"
-                  onClick={handleSubmit}
-                  isLoading={loading}
-                  loadingText="Analyzing..."
-                  bg="linear-gradient(135deg, #667eea 0%, #764ba2 100%)"
-                  _hover={{
-                    transform: "translateY(-2px)",
-                    boxShadow: "0 8px 25px rgba(102, 126, 234, 0.4)"
-                  }}
-                  transition="all 0.2s"
-                >
-                  Execute
-                </Button>
-              </HStack>
-            </VStack>
           </Box>
 
           {/* Loading State */}
@@ -803,7 +881,7 @@ function App() {
                           </Badge>
                         )}
                         <Badge colorScheme="purple" fontSize="sm" borderRadius="full" px={3} py={1}>
-                          {result.results.length} results
+                          {result.results ? result.results.length : 0} results
                         </Badge>
                   </HStack>
                 </VStack>
@@ -865,7 +943,7 @@ function App() {
                           border="1px"
                           borderColor="gray.200"
                             >
-                              <Text color="gray.700">{result.natural_query}</Text>
+                              <Text color="gray.700">{result.natural_query || 'No query available'}</Text>
                             </Box>
                           </Box>
 
@@ -902,7 +980,7 @@ function App() {
                                   }
                             }}
                           >
-                            {result.explanation}
+                            {result.explanation || 'No explanation available'}
                           </ReactMarkdown>
                         </Box>
                       </Box>
@@ -954,7 +1032,7 @@ function App() {
                                 fontSize: '14px'
                             }}
                           >
-                            {result.sql_query}
+                            {result.sql_query || 'No SQL query available'}
                           </SyntaxHighlighter>
                       </Box>
                     </VStack>
@@ -968,11 +1046,11 @@ function App() {
                         Query Results
                       </Text>
                             <Text fontSize="sm" color="gray.600">
-                              {result.results.length} rows returned
+                              {result.results ? result.results.length : 0} rows returned
                             </Text>
                           </HStack>
                       
-                          {result.results.length > 0 ? (
+                          {result.results && result.results.length > 0 ? (
                         <Box
                               overflow="auto"
                               maxH="500px"
@@ -983,7 +1061,7 @@ function App() {
                           <Table variant="simple" bg="white">
                             <Thead bg="gray.100">
                               <Tr>
-                                {Object.keys(result.results[0]).map((key) => (
+                                {Object.keys(result.results[0] || {}).map((key) => (
                                   <Th key={key} py={4} px={6} color="gray.700" fontWeight="semibold">
                                     {key}
                                   </Th>
@@ -993,9 +1071,9 @@ function App() {
                             <Tbody>
                               {result.results.map((row, index) => (
                                 <Tr key={index} _hover={{ bg: "gray.50" }}>
-                                  {Object.values(row).map((value, cellIndex) => (
+                                  {Object.values(row || {}).map((value, cellIndex) => (
                                     <Td key={cellIndex} py={3} px={6} color="gray.800">
-                                      {String(value)}
+                                      {String(value || '')}
                                     </Td>
                                   ))}
                                 </Tr>

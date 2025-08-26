@@ -18,9 +18,11 @@ from langchain_utils import (
     execute_sql_query,
     check_data_availability_with_ai,
     generate_chart,
-    detect_chart_type
+    detect_chart_type,
+    detect_hr_chart_type
 )
-from user_roles import validate_user_query, get_user_permissions, user_manager
+
+# from user_roles import validate_user_query, get_user_permissions, user_manager
 from query_history import get_all_sessions, save_query_history
 from datetime import datetime
 from openai import OpenAI
@@ -43,80 +45,106 @@ logger = logging.getLogger(__name__)
 
 # Initialize FastAPI app
 app = FastAPI(
-    title="Txt to SQL API with LangChain",
-    description="API for converting natural language to SQL queries using LangChain pipeline",
+    title="HR Analytics API with LangChain",
+    description="AI-powered HR data analytics platform for employee, engagement, recruitment, and training data",
     version="2.0.0"
 )
 
-# CORS ayarlarını en başa al
+# CORS ayarlarını en başa al - CORS middleware must be first
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["http://localhost:3000", "http://127.0.0.1:3000"],  # Allow both localhost variations
-    allow_credentials=True,
-    allow_methods=["*"],  # Allow all methods during development
+    allow_origins=["*"],  # Allow all origins during development
+    allow_credentials=False,  # Set to False when allow_origins=["*"]
+    allow_methods=["*"],  # Allow all methods
     allow_headers=["*"],  # Allow all headers
-    expose_headers=["*"]  # Expose all headers
 )
 
-# Add logging middleware
+# Add CORS debugging middleware
+@app.middleware("http")
+async def cors_debug_middleware(request: Request, call_next):
+    """Debug CORS headers"""
+    logger.info(f"CORS Debug - Origin: {request.headers.get('origin')}")
+    logger.info(f"CORS Debug - Method: {request.method}")
+    
+    response = await call_next(request)
+    logger.info(f"CORS Debug - Response status: {response.status_code}")
+    return response
+
+# Add optimized logging middleware
 @app.middleware("http")
 async def log_requests(request: Request, call_next):
-    logger.info(f"Request: {request.method} {request.url}")
-    logger.info(f"Request headers: {request.headers}")
+    # Only log essential information for performance
+    start_time = time.time()
+    
     try:
         response = await call_next(request)
-        logger.info(f"Response status: {response.status_code}")
-        logger.info(f"Response headers: {response.headers}")
+        # Only log slow requests (>1 second) or errors
+        duration = time.time() - start_time
+        if duration > 1.0:
+            logger.warning(f"Slow request: {request.method} {request.url} took {duration:.2f}s")
         return response
     except Exception as e:
-        logger.error(f"Request failed: {e}")
+        logger.error(f"Request failed: {request.method} {request.url} - {e}")
         raise
+
+@app.options("/{full_path:path}")
+async def options_handler():
+    """Handle preflight OPTIONS requests for CORS"""
+    from fastapi.responses import Response
+    return Response(content="OK")
+
+@app.get("/test-cors")
+async def test_cors():
+    """Test endpoint to verify CORS is working"""
+    return {"message": "CORS test successful", "timestamp": datetime.now().isoformat()}
 
 @app.get("/")
 async def root():
     """Root endpoint that returns API information"""
     logger.info("Root endpoint called")
     return {
-        "name": "Text to SQL API with LangChain",
+        "name": "HR Analytics API with LangChain",
         "version": "2.0.0",
+        "description": "AI-powered HR data analytics platform for employee, engagement, recruitment, and training data",
         "endpoints": [
             {"path": "/", "method": "GET", "description": "This information"},
-            {"path": "/sessions", "method": "GET", "description": "Get all query sessions"},
-            {"path": "/generate-sql", "method": "POST", "description": "Generate SQL from natural language using LangChain"},
-            {"path": "/execute-sql", "method": "POST", "description": "Execute natural language query with LangChain"},
-            {"path": "/check-and-execute", "method": "POST", "description": "Check data availability and execute query"},
-            {"path": "/chart", "method": "POST", "description": "Generate charts for query results"},
+            {"path": "/sessions", "method": "GET", "description": "Get all HR query sessions"},
+            {"path": "/generate-sql", "method": "POST", "description": "Generate SQL for HR data analysis using LangChain"},
+            {"path": "/execute-sql", "method": "POST", "description": "Execute HR analytics query with LangChain"},
+            {"path": "/check-and-execute", "method": "POST", "description": "Check HR data availability and execute analytics query"},
+            {"path": "/chart", "method": "POST", "description": "Generate HR-specific charts and visualizations"},
             {"path": "/user-permissions/{username}", "method": "GET", "description": "Get user permissions"},
             {"path": "/users", "method": "GET", "description": "List all demo users"},
+
         ]
     }
 
 class QueryRequest(BaseModel):
-    """Request model for query endpoints"""
+    """Request model for HR analytics query endpoints"""
     query: str
     session_id: str | None = None
     username: str = "demo_admin"  # Default admin user for demo
 
 class GenerateSQLResponse(BaseModel):
-    """Response model for generate-sql endpoint """
+    """Response model for HR analytics SQL generation endpoint"""
     explanation: str
     sql_query: str
 
 class ExecuteSQLResponse(BaseModel):
-    """Response model for execute-sql endpoint with LangChain enhancements
+    """Response model for HR analytics execution endpoint with LangChain enhancements
 
-    This model contains the complete response including the explanation,
-    the SQL query, its execution results, and chart information.
+    This model contains the complete HR analytics response including the explanation,
+    the SQL query, its execution results, and HR-specific chart information.
 
     Attributes:
-        explanation (str): Detailed explanation of the SQL query generation process with AI analysis
-        sql_query (str): The generated and executed SQL query
-        results (List[Dict[str, Any]]): Query execution results, where each dictionary
+        explanation (str): Detailed explanation of the HR analytics query generation process with AI analysis
+        sql_query (str): The generated and executed SQL query for HR data
+        results (List[Dict[str, Any]]): HR analytics results, where each dictionary
             represents a row with column names as keys and cell values as values.
-        session_id (str): The ID of the query session
-        title (str): The title of the query
-        chart_data (Optional[str]): Base64 encoded chart image if applicable
-        chart_config (Dict[str, Any]): Chart configuration and metadata
+        session_id (str): The ID of the HR analytics session
+        title (str): The title of the HR analytics query
+        chart_data (Optional[str]): Base64 encoded HR chart image if applicable
+        chart_config (Dict[str, Any]): HR-specific chart configuration and metadata
     """
     explanation: str
     sql_query: str
@@ -127,12 +155,12 @@ class ExecuteSQLResponse(BaseModel):
     chart_config: Dict[str, Any] = {}
 
 class Session(BaseModel):
-    """Model for a query session"""
+    """Model for an HR analytics query session"""
     id: str
     queries: List[Dict[str, Any]]
 
 class ChartRequest(BaseModel):
-    """Request model for chart generation"""
+    """Request model for HR analytics chart generation"""
     query: str
     chart_type: Optional[str] = None
     x_column: Optional[str] = None
@@ -171,18 +199,24 @@ def _is_duplicate_request(request: Request, endpoint: str) -> bool:
 
 @app.get("/sessions")
 async def get_sessions(request: Request):
-    """Get all query sessions from SQLite database"""
+    """Get all HR analytics query sessions from SQLite database"""
     try:
         from query_history import get_all_sessions
         # Doğrudan query_history modülünün fonksiyonunu kullanalım
         sessions = get_all_sessions()
         
-        # Sadece ilk çağrıda log yaz, sonraki çağrılarda minimal log
+        # Minimal logging - only log when there are significant changes
         sessions_count = len(sessions)
         total_queries = sum(len(s['queries']) for s in sessions)
         
-        # Minimal logging - sadece session count değiştiğinde log yaz
-        logger.info(f"Sessions endpoint called - {sessions_count} sessions, {total_queries} queries")
+        # Cache the last count to avoid unnecessary logging
+        if not hasattr(get_sessions, '_last_count'):
+            get_sessions._last_count = (0, 0)
+        
+        last_sessions, last_queries = get_sessions._last_count
+        if abs(sessions_count - last_sessions) > 5 or abs(total_queries - last_queries) > 10:
+            logger.info(f"Sessions endpoint - {sessions_count} sessions, {total_queries} queries")
+            get_sessions._last_count = (sessions_count, total_queries)
         
         return JSONResponse(content=sessions)
     except Exception as e:
@@ -191,24 +225,24 @@ async def get_sessions(request: Request):
 
 @app.post("/generate-sql", response_model=GenerateSQLResponse)
 async def generate_sql(request: QueryRequest) -> GenerateSQLResponse:
-    """Generate SQL query from natural language input using LangChain
+    """Generate SQL query for HR analytics from natural language input using LangChain
 
-    This endpoint takes a natural language query and converts it to SQL using LangChain pipeline.
-    It returns both an explanation of the conversion process and the resulting SQL query.
+    This endpoint takes a natural language HR query and converts it to SQL using LangChain pipeline.
+    It returns both an explanation of the conversion process and the resulting SQL query for HR data analysis.
 
     Args:
-        request (QueryRequest): Request object containing the natural language query
+        request (QueryRequest): Request object containing the natural language HR analytics query
 
     Returns:
         GenerateSQLResponse: Object containing:
-            - explanation: Detailed explanation of the SQL generation process
-            - sql_query: The generated SQL query
+            - explanation: Detailed explanation of the HR SQL generation process
+            - sql_query: The generated SQL query for HR data analysis
 
     Example:
-        Request: {"query": "Show all stores in New York"}
+        Request: {"query": "Show me employee count by department"}
         Response: {
-            "explanation": "Converting query for NY stores...",
-            "sql_query": "SELECT * FROM Stores WHERE State = 'NY'"
+            "explanation": "Converting HR query for employee count by department...",
+            "sql_query": "SELECT department, COUNT(*) as employee_count FROM employees GROUP BY department"
         }
     """
     try:
@@ -222,8 +256,8 @@ async def generate_sql(request: QueryRequest) -> GenerateSQLResponse:
 
 @app.post("/execute-sql", response_model=ExecuteSQLResponse)
 async def execute_sql(request: QueryRequest) -> ExecuteSQLResponse:
-    """Generate and execute SQL query from natural language input using LangChain"""
-    logger.info(f"Executing SQL for query: {request.query}")
+    """Generate and execute SQL query for HR analytics from natural language input using LangChain"""
+    logger.info(f"Executing HR analytics SQL for query: {request.query}")
     try:
         # Use LangChain pipeline for complete processing
         explanation, sql_query, results, session_id, title, chart_data, chart_config = await process_natural_query_langchain(
@@ -259,7 +293,7 @@ async def execute_sql(request: QueryRequest) -> ExecuteSQLResponse:
             chart_config=chart_config
         )
         
-        logger.info(f"Query executed successfully with LangChain, session_id: {session_id}")
+        logger.info(f"HR analytics query executed successfully with LangChain, session_id: {session_id}")
         return response
     except Exception as e:
         logger.error(f"Error executing query with LangChain: {e}")
@@ -267,8 +301,8 @@ async def execute_sql(request: QueryRequest) -> ExecuteSQLResponse:
 
 @app.post("/chart", response_model=Dict[str, Any])
 async def generate_chart_endpoint(request: ChartRequest) -> Dict[str, Any]:
-    """Generate chart for query results"""
-    logger.info(f"Generating chart for query: {request.query}")
+    """Generate HR-specific charts and visualizations for analytics results"""
+    logger.info(f"Generating HR analytics chart for query: {request.query}")
     
     try:
         # First execute the query to get results
@@ -284,7 +318,7 @@ async def generate_chart_endpoint(request: ChartRequest) -> Dict[str, Any]:
         
         # Detect chart type if not specified
         if not request.chart_type:
-            chart_config = detect_chart_type(request.query, results)
+            chart_config = detect_hr_chart_type(request.query, results)
         else:
             chart_config = {
                 "chart_type": request.chart_type,
@@ -341,8 +375,8 @@ class CheckAndExecuteResponse(BaseModel):
 
 @app.post("/check-and-execute", response_model=CheckAndExecuteResponse)
 async def check_and_execute(request: QueryRequest) -> CheckAndExecuteResponse:
-    """Check data availability and execute SQL query if data exists using LangChain"""
-    logger.info(f"Checking data availability for query: {request.query} from user: {request.username}")
+    """Check HR data availability and execute analytics query if data exists using LangChain"""
+    logger.info(f"Checking HR data availability for query: {request.query} from user: {request.username}")
     
     # Generate session_id if not provided
     if not request.session_id:
@@ -350,59 +384,56 @@ async def check_and_execute(request: QueryRequest) -> CheckAndExecuteResponse:
         request.session_id = generate_session_id()
         logger.info(f"Generated new session_id: {request.session_id}")
     
-    # First, check data availability using AI
-    is_available, check_message = await check_data_availability_with_ai(request.query)
-    logger.info(f"Availability check result: {is_available}, message: {check_message}")
-    
-    if not is_available:
-        return CheckAndExecuteResponse(
-            status="no_data",
-            message=check_message,
-            data=None
-        )
-    
-    # If data is available, proceed with LangChain execution
+    # Use unified LangChain pipeline for all operations
     explanation, sql_query, results, session_id, title, chart_data, chart_config = await process_natural_query_langchain(
         request.query, 
         request.session_id
     )
     
-    # USER PERMISSION CHECK - SQL query'yi kullanıcı yetkilerine göre validate et
-    logger.info(f"Validating query permissions for user: {request.username}")
-    permission_check = validate_user_query(request.username, sql_query)
-    
-    if not permission_check["allowed"]:
-        logger.warning(f"Permission denied for user {request.username}: {permission_check['error']}")
+    # Check if data was available (handled by unified pipeline)
+    if not results or (len(results) == 1 and 'message' in results[0] and 'No data available' in str(results[0])):
         return CheckAndExecuteResponse(
-            status="permission_denied",
-            message=f"Permission denied: {permission_check['error']}",
+            status="no_data",
+            message="No data available for this query",
             data=None
         )
     
-    # Eğer query modify edildiyse, yeni SQL'i kullan
-    if permission_check["modified_query"] and permission_check["modified_query"] != sql_query:
-        logger.info(f"Query modified for user {request.username} due to permissions")
-        logger.info(f"Original: {sql_query}")
-        logger.info(f"Modified: {permission_check['modified_query']}")
-        sql_query = permission_check["modified_query"]
-        
-        # Modified query ile tekrar execute et
-        try:
-            results = execute_sql_query(sql_query)
-            logger.info(f"Modified query executed successfully, returned {len(results)} results")
-        except Exception as e:
-            logger.error(f"Modified query execution failed: {e}")
-            return CheckAndExecuteResponse(
-                status="error",
-                message=f"Modified query execution failed: {str(e)}",
-                data=None
-            )
+    # USER PERMISSION CHECK - DISABLED FOR NOW
+    # logger.info(f"Validating HR analytics query permissions for user: {request.username}")
+    # permission_check = validate_user_query(request.username, sql_query)
     
-    # Chart yetkisi kontrolü
-    if chart_config and not user_manager.can_create_chart(request.username):
-        logger.info(f"Chart creation disabled for user {request.username}")
-        chart_config = None
-        chart_data = None
+    # if not permission_check["allowed"]:
+    #     logger.warning(f"Permission denied for user {request.username}: {permission_check['error']}")
+    #     return CheckAndExecuteResponse(
+    #         status="permission_denied",
+    #         message=f"Permission denied: {permission_check['error']}",
+    #         data=None
+    #     )
+    
+    # # Eğer query modify edildiyse, yeni SQL'i kullan
+    # if permission_check["modified_query"] and permission_check["modified_query"] != sql_query:
+    #     logger.info(f"HR analytics query modified for user {request.username} due to permissions")
+    #     logger.info(f"Original: {sql_query}")
+    #     logger.info(f"Modified: {permission_check['modified_query']}")
+    #     sql_query = permission_check["modified_query"]
+        
+    #     # Modified query ile tekrar execute et
+    #     try:
+    #         results = execute_sql_query(sql_query)
+    #         logger.info(f"Modified HR analytics query executed successfully, returned {len(results)} results")
+    #     except Exception as e:
+    #         logger.error(f"Modified query execution failed: {e}")
+    #         return CheckAndExecuteResponse(
+    #                 status="error",
+    #                 message=f"Modified query execution failed: {str(e)}",
+    #                 data=None
+    #             )
+    
+    # # Chart yetkisi kontrolü
+    # if chart_config and not user_manager.can_create_chart(request.username):
+    #     logger.info(f"HR analytics chart creation disabled for user {request.username}")
+    #     chart_config = None
+    #     chart_data = None
     
     # Save query to history with user info
     save_query_history(
@@ -429,47 +460,124 @@ async def check_and_execute(request: QueryRequest) -> CheckAndExecuteResponse:
     
     return CheckAndExecuteResponse(
         status="success",
-        message=f"Query executed successfully with LangChain for user {request.username} ({permission_check['user_role']})",
+        message=f"HR analytics query executed successfully with LangChain for user {request.username}",
         data=response
     )
 
-@app.get("/user-permissions/{username}")
-async def get_user_permissions_endpoint(username: str):
-    """Get user permissions and role information"""
-    logger.info(f"Getting permissions for user: {username}")
-    permissions = get_user_permissions(username)
+# @app.get("/user-permissions/{username}")
+# async def get_user_permissions_endpoint(username: str):
+#     """Get user permissions and role information"""
+#     logger.info(f"Getting HR analytics permissions for user: {username}")
+#     permissions = get_user_permissions(username)
     
-    if "error" in permissions:
-        raise HTTPException(status_code=404, detail=permissions["error"])
+#     if "error" in permissions:
+#         raise HTTPException(status_code=404, detail=permissions["error"])
     
-    return {
-        "username": username,
-        "permissions": permissions
-    }
+#     return {
+#         "username": username,
+#         "permissions": permissions
+#     }
 
-@app.get("/users")
-async def list_users():
-    """List all demo users with their roles"""
-    logger.info("Listing all demo users")
+# @app.get("/users")
+# async def list_users():
+#     """List all demo users with their roles"""
+#     logger.info("Listing all demo users")
     
-    users = []
-    for username in ["demo_viewer", "demo_analyst", "demo_admin"]:
-        permissions = get_user_permissions(username)
-        if "error" not in permissions:
-            users.append(permissions)
+#     users = []
+#     for username in ["demo_viewer", "demo_analyst", "demo_admin"]:
+#         permissions = get_user_permissions(username)
+#         if "error" not in permissions:
+#             users.append(permissions)
     
-    return {
-        "users": users,
-        "total": len(users)
-    }
+#     return {
+#         "users": users,
+#         "total": len(users)
+#     }
+
+
+
+# Cache Management Endpoints
+# @app.get("/cache/stats")
+# async def get_cache_stats():
+#     """Get cache statistics and performance metrics"""
+#     try:
+#         stats = cache_manager.get_cache_stats()
+#         recommendations = cache_manager.get_cache_recommendations()
+        
+#         return {
+#             "status": "success",
+#             "cache_stats": stats,
+#             "recommendations": recommendations,
+#             "timestamp": datetime.now().isoformat()
+#         }
+#     except Exception as e:
+#         logger.error(f"Error getting cache stats: {e}")
+#         raise HTTPException(status_code=500, detail=f"Error retrieving cache statistics: {str(e)}")
+
+# @app.get("/cache/popular")
+# async def get_popular_queries(limit: int = 10):
+#     """Get most frequently accessed cached queries"""
+#     try:
+#         if limit > 50:  # Limit to prevent abuse
+#             limit = 50
+        
+#         popular_queries = cache_manager.get_popular_queries(limit)
+        
+#         return {
+#             "status": "success",
+#             "limit": limit,
+#             "popular_queries": popular_queries,
+#             "timestamp": datetime.now().isoformat()
+#         }
+#     except Exception as e:
+#         logger.error(f"Error getting popular queries: {e}")
+#         raise HTTPException(status_code=500, detail=f"Error retrieving popular queries: {str(e)}")
+
+# @app.post("/cache/clear")
+# async def clear_cache(clear_type: str = "expired"):
+#     """Clear cache entries (admin only)"""
+#     try:
+#         if clear_type == "expired":
+#             cache_manager.clear_expired_cache()
+#             message = "Expired cache entries cleared successfully"
+#         elif clear_type == "all":
+#             cache_manager.clear_all_cache()
+#             message = "All cache entries cleared successfully"
+#         else:
+#             raise HTTPException(status_code=400, detail="Invalid clear_type. Use 'expired' or 'all'")
+        
+#         return {
+#             "status": "success",
+#             "message": message,
+#             "clear_type": clear_type,
+#             "timestamp": datetime.now().isoformat()
+#         }
+#     except HTTPException:
+#         raise
+#     except Exception as e:
+#         logger.error(f"Error clearing cache: {e}")
+#         raise HTTPException(status_code=500, detail=f"Error clearing cache: {str(e)}")
+
+
 
 if __name__ == "__main__":
     import uvicorn
+    from config.oracle_config import get_connection_pool
+    
     logger.info("Starting server with LangChain support...")
+    
+    # Initialize connection pool before starting server
+    try:
+        pool = get_connection_pool()
+        logger.info("Oracle connection pool initialized successfully")
+    except Exception as e:
+        logger.error(f"Failed to initialize connection pool: {e}")
+        logger.warning("Server will start but database operations may be slow")
+    
     uvicorn.run(
         "main:app",  # string olarak uygulama yolunu ver
         host="127.0.0.1",
         port=8000,
-        log_level="debug",
+        log_level="info",  # Changed from debug to info for better performance
         reload=True
     )
