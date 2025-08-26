@@ -1,6 +1,0 @@
-Field Name;Data Type;Format;Description;Example;Nullable
-Employee ID;Integer;;A unique identifier assigned to each employee who participated in the employee engagement survey;1001;No
-Survey Date;Date;dd-mm-yyyy;The date on which the engagement survey was administered to employees;10.10.2022;No
-Engagement Score;Integer;;A calculated numerical score representing the level of employee engagement based on survey responses;255;No
-Satisfaction Score;Integer;;A numerical score indicating employee satisfaction with various aspects of their job and workplace;453;No
-Work-Life Balance Score;Integer;;A numerical score reflecting employee perceptions of the balance between work and personal life;252;No

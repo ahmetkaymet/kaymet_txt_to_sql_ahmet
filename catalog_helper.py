@@ -20,13 +20,13 @@ def get_catalog_context() -> str:
         for csv_file in catalog_dir.glob("*.csv"):
             table_name = _extract_table_name(csv_file.name)
             try:
-                # Try different encodings
-                df = pd.read_csv(csv_file, sep=',', encoding='utf-8')
+                # Try different encodings with semicolon separator
+                df = pd.read_csv(csv_file, sep=';', encoding='utf-8')
             except UnicodeDecodeError:
                 try:
-                    df = pd.read_csv(csv_file, sep=',', encoding='latin-1')
+                    df = pd.read_csv(csv_file, sep=';', encoding='latin-1')
                 except UnicodeDecodeError:
-                    df = pd.read_csv(csv_file, sep=',', encoding='cp1252')
+                    df = pd.read_csv(csv_file, sep=';', encoding='cp1252')
             
             context_parts.append(f"Table: {table_name}")
             context_parts.append("Columns:")
@@ -69,7 +69,7 @@ def get_table_schemas() -> Dict[str, List[Dict[str, Any]]]:
         for csv_file in catalog_dir.glob("*.csv"):
             table_name = _extract_table_name(csv_file.name)
             try:
-                # Try different encodings
+                # Try different encodings with semicolon separator
                 df = pd.read_csv(csv_file, sep=';', encoding='utf-8')
             except UnicodeDecodeError:
                 try:

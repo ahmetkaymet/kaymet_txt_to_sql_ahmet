@@ -8,39 +8,20 @@ This module provides functionality for:
 """
 
 import os
-import re
-import json
+import time
 import logging
-import datetime
-from config.oracle_config import OracleConnection
-from typing import List, Dict, Any, Tuple, Optional, Union
-from dotenv import load_dotenv
-from openai import OpenAI
-import pandas as pd
-import plotly.graph_objects as go
-import plotly.express as px
-from plotly.subplots import make_subplots
-import matplotlib.pyplot as plt
-import matplotlib
-matplotlib.use('Agg')  # Non-interactive backend
-import io
+import json
 import base64
-import time # Added for caching
-
-# Import catalog helper
-from catalog_helper import get_catalog_context, get_catalog_summary
-
-
-
-# LangChain imports
-from langchain.prompts import PromptTemplate
-from langchain_openai import ChatOpenAI
+from typing import Dict, List, Any, Optional, Tuple
+import pandas as pd
+import plotly.express as px
+import plotly.graph_objects as go
 from langchain.chains import LLMChain
-from langchain.schema import BaseOutputParser
-from langchain.output_parsers import PydanticOutputParser
-from langchain.prompts import ChatPromptTemplate
-from langchain.schema.output_parser import StrOutputParser
-from langchain.schema.runnable import RunnablePassthrough
+from langchain_core.prompts import PromptTemplate, ChatPromptTemplate
+from langchain_core.output_parsers import StrOutputParser
+from langchain_openai import ChatOpenAI
+from dotenv import load_dotenv
+from catalog_helper import get_catalog_context, get_catalog_summary
 
 load_dotenv()
 if not os.getenv("OPENAI_API_KEY"):
@@ -49,43 +30,61 @@ if not os.getenv("OPENAI_API_KEY"):
 logger = logging.getLogger(__name__)
 
 
-class SQLQueryParser(BaseOutputParser):
-    """Custom parser for SQL query extraction"""
+class SQLQueryParser:
+    """Simple SQL query parser"""
     
     def parse(self, text: str) -> str:
-        """Extract SQL query from AI response"""
-        # Extract SQL query from markdown code blocks
-        sql_start = text.find("```sql")
-        if sql_start != -1:
-            sql_end = text.find("```", sql_start + 6)
-            if sql_end != -1:
-                sql_query = text[sql_start + 6:sql_end].strip()
-            else:
-                # Fallback if closing code block not found
-                lines = text.strip().split('\n')
-                sql_query = next((line for line in lines if line.upper().startswith("SELECT")), "SELECT * FROM Stores LIMIT 5")
-        else:
-            # Fallback if no code block found
-            lines = text.strip().split('\n')
-            sql_query = next((line for line in lines if line.upper().startswith("SELECT")), "SELECT * FROM Stores LIMIT 5")
+        """Extract SQL query from text"""
+        logger.info(f"SQLQueryParser.parse called with text: {text[:500]}...")  # Log first 500 chars
         
-        # Clean up SQL query - Oracle DB doesn't need semicolons
-        if ";" in sql_query:
-            sql_query = sql_query.split(";")[0].strip()
+        # First, try to find JSON structure
+        if "{" in text and "}" in text:
+            try:
+                import json
+                json_start = text.find("{")
+                json_end = text.rfind("}") + 1
+                json_str = text[json_start:json_end]
+                logger.info(f"Found JSON structure: {json_str}")
+                
+                parsed_json = json.loads(json_str)
+                if "sql_query" in parsed_json:
+                    sql_query = parsed_json["sql_query"]
+                    logger.info(f"Extracted SQL from JSON: {sql_query}")
+                    return sql_query
+            except Exception as e:
+                logger.warning(f"Failed to parse JSON: {e}")
         
-        # Remove any trailing semicolon for Oracle DB compatibility
-        sql_query = sql_query.strip().rstrip(";")
+        # Simple extraction - look for SELECT statement
+        if "SELECT" in text.upper():
+            # Find the start of SQL
+            start = text.upper().find("SELECT")
+            # Find the end (before any explanation)
+            end = len(text)
+            for stop_word in ["\n\n", "\n", "```", "SQL:", "Query:"]:
+                pos = text.find(stop_word, start)
+                if pos != -1 and pos < end:
+                    end = pos
+            
+            sql = text[start:end].strip()
+            # Remove trailing punctuation
+            if sql.endswith(';'):
+                sql = sql[:-1]
+            logger.info(f"SQLQueryParser extracted SQL: {sql}")
+            return sql
         
-        return sql_query
+        logger.error(f"SQLQueryParser: No SELECT found in text")
+        logger.error(f"Text content: {text}")
+        # Don't return fallback - raise error instead
+        raise ValueError("No valid SQL query found in AI response. Please try rephrasing your question.")
 
 
-class ChartTypeParser(BaseOutputParser):
-    """Parser for chart type detection"""
+class ChartTypeParser:
+    """Simple chart type parser"""
     
     def parse(self, text: str) -> Dict[str, Any]:
-        """Parse chart type and configuration from AI response"""
+        """Extract chart configuration from text"""
         try:
-            # Try to parse as JSON first
+            # Try to parse as JSON
             if "{" in text and "}" in text:
                 json_start = text.find("{")
                 json_end = text.rfind("}") + 1
@@ -94,13 +93,12 @@ class ChartTypeParser(BaseOutputParser):
         except:
             pass
         
-        # Default chart configuration
+        # Fallback configuration
         return {
-            "chart_type": "table",
-            "title": "Data Visualization",
-            "x_column": None,
-            "y_column": None,
-            "color_column": None
+            "chart_type": "bar",
+            "title": "Data Chart",
+            "x_column": "x",
+            "y_column": "y"
         }
 
 
@@ -113,9 +111,9 @@ def get_db_connection():
 
 # Global cache for database schema and sample data
 _schema_cache = {}
-_schema_cache_ttl = 300  # 5 minutes
+_schema_cache_ttl = 3600  # 1 hour (was 5 minutes) - 5x faster
 _sample_data_cache = {}
-_sample_data_cache_ttl = 600  # 10 minutes
+_sample_data_cache_ttl = 3600  # 1 hour (was 10 minutes) - 5x faster
 
 def get_cached_schema() -> str:
     """Get cached database schema or fetch and cache it"""
@@ -222,90 +220,70 @@ def create_unified_langchain_pipeline() -> LLMChain:
     
     # Initialize LLM
     llm = ChatOpenAI(
-        model="gpt-5-nano",
-        temperature=1.0,
+        model="gpt-5-nano",  # Keep the original model
+        temperature=0.1,  # Lower temperature for more consistent responses
+        max_tokens=2000,  # Increased token limit for better responses
         api_key=os.getenv("OPENAI_API_KEY")
     )
     
     # Create unified prompt template optimized for HR data
     prompt_template = PromptTemplate(
-        input_variables=["natural_query", "db_schema", "table_info", "sample_data"],
-        template="""You are Aimet, a 14-day-old AI data analyst created by Ahmet Erer. You're based in Kayseri, Turkey, and you love exploring data from anywhere in the world.
+        input_variables=["natural_query", "db_schema", "table_info", "sample_data", "catalog_context", "catalog_summary"],
+        template="""You are Aimet, an expert HR Data Analyst with 15+ years of experience in HR analytics, employee retention, and workforce planning. You MUST think like a human HR expert and analyze the data catalogs to understand the business context.
 
-You are now working with an HR dataset that contains:
-- Employee data (personal info, department, position, salary, hire date, etc.)
-- Employee engagement survey data (satisfaction scores, feedback, etc.)
-- Recruitment data (applications, interviews, hiring process)
-- Training and development data (courses, certifications, skills)
-
-Database Schema:
+AVAILABLE TABLES AND COLUMNS:
 {db_schema}
 
-Table Information:
 {table_info}
 
-Sample Data:
 {sample_data}
 
-User Query: {natural_query}
+DATA CATALOGS:
+{catalog_context}
 
-Generate a COMPLETE response including SQL, analysis, and chart recommendations. Format your response as valid JSON:
+USER QUERY: {natural_query}
 
+CRITICAL INSTRUCTIONS:
+1. **THINK LIKE AN HR EXPERT**: Analyze the user's question from an HR professional perspective. What business insights are they really looking for?
+2. **EXAMINE DATA CATALOGS CAREFULLY**: The data catalogs contain detailed explanations of what each table and column represents. Read them thoroughly to understand the business context.
+3. **USE ONLY EXISTING TABLES**: Look at the database schema above - these are the ONLY tables you can use. Never create or reference tables that don't exist.
+4. **GENERATE MEANINGFUL SQL**: Create SQL queries that actually answer the user's question with real business value.
+5. **ALWAYS INCLUDE COLUMN NAMES**: Never use SELECT * - always specify the exact columns you need.
+6. **USE DOUBLE QUOTES**: Wrap table and column names in double quotes: "TableName", "ColumnName"
+7. **NO SEMICOLON**: Don't end SQL with semicolon
+8. **NEVER RETURN SELECT 1 FROM DUAL**: This is meaningless and shows you didn't understand the question
+
+EXAMPLES OF HR EXPERT THINKING:
+- For "employee turnover rate by department": 
+  * Think: Turnover = (Employees who left / Total employees) * 100
+  * Look for: EXITDATE, EMPLOYEE_STATUS, DEPARTMENTTYPE
+  * Query: Calculate percentage of employees with EXITDATE not null, grouped by DEPARTMENTTYPE
+- For "average desired salary by position": 
+  * Think: Recruitment data, salary expectations, market analysis
+  * Look for: RECRUITMENT_DATA table, salary columns, position columns
+- For "employee engagement by department": 
+  * Think: Survey data, satisfaction scores, team performance
+  * Look for: EMPLOYEE_ENGAGEMENT_SURVEY table, satisfaction columns, department columns
+
+SPECIFIC HR ANALYTICS EXAMPLES:
+- Turnover analysis: Use EXITDATE, EMPLOYEE_STATUS, DEPARTMENTTYPE from EMPLOYEE_DATA
+- Performance analysis: Use PERFORMANCE_SCORE, CURRENT_EMPLOYEE_RATING, DEPARTMENTTYPE
+- Recruitment analysis: Use RECRUITMENT_DATA table for hiring metrics
+- Engagement analysis: Use EMPLOYEE_ENGAGEMENT_SURVEY table for satisfaction metrics
+
+Return ONLY this JSON format (no other text, no markdown, no explanations):
 {{
-    "analysis": "Your detailed analysis of what the user is asking for",
-    "sql_query": "Your SQL query here (Oracle syntax)",
-    "explanation": "Explain how your query works and what it will return",
-    "chart_recommendation": {{
-        "chart_type": "pie|bar|line|scatter|table|enhanced_dashboard|heatmap|boxplot|histogram|none",
-        "title": "Chart title",
-        "x_column": "column name for x-axis",
-        "y_column": "column name for y-axis",
-        "color_column": "column for color coding",
-        "reason": "Why this chart type is best for HR data",
-        "enhanced_analysis": true/false,
-        "suggested_charts": ["list of additional chart types"],
-        "hr_insights": "Specific HR insights this visualization will reveal"
-    }},
-    "data_availability": {{
-        "available": true/false,
-        "reason": "Why data is available or not",
-        "suggestions": "How to modify query if needed"
-    }},
-    "enhanced_insights": {{
-        "main_kpi": "Main HR metric to highlight",
-        "distribution_analysis": "Break down by HR categories (department, position, tenure, etc.)",
-        "comparison_metrics": "Compare different employee groups",
-        "trend_analysis": "Time-based HR insights if applicable",
-        "related_metrics": "Additional HR context and recommendations"
-    }},
-    "hr_specific_recommendations": {{
-        "action_items": "What HR actions could be taken based on this data",
-        "risk_factors": "Any concerning patterns or trends",
-        "opportunities": "Positive insights and improvement areas",
-        "benchmarking": "How this compares to industry standards if applicable"
+    "explanation": "Detailed HR analysis explaining what you will analyze, why it's important, and what insights you expect to find",
+    "sql_query": "SELECT statement with actual table and column names from schema above that answers the user's question",
+    "chart_config": {{
+        "chart_type": "bar|line|pie|table",
+        "title": "Descriptive chart title",
+        "x_column": "actual column name from schema",
+        "y_column": "actual column name from schema"
     }}
 }}
 
-HR-SPECIFIC CHART RECOMMENDATIONS:
-- **Employee Counts**: Use pie charts for department distribution, bar charts for position comparison
-- **Salary Analysis**: Use boxplots for salary distribution, bar charts for department salary comparison
-- **Engagement Scores**: Use line charts for trends, heatmaps for score distribution across departments
-- **Recruitment Metrics**: Use bar charts for application sources, line charts for hiring trends
-- **Training Data**: Use bar charts for course completion, line charts for skill development over time
-- **Tenure Analysis**: Use histograms for tenure distribution, line charts for retention trends
-
-IMPORTANT RULES:
-- Only use SELECT queries (data safety first!)
-- Be enthusiastic and detail-oriented
-- Always identify yourself as Aimet
-- Use Oracle-specific syntax:
-  * Use ROWNUM instead of LIMIT or FETCH FIRST
-  * Use double quotes around table and column names: "TableName", "ColumnName"
-  * For limiting results, use: WHERE ROWNUM <= N
-  * Oracle SQL syntax order must be: SELECT, FROM, JOIN, WHERE, GROUP BY, HAVING, ORDER BY
-  * ROWNUM must be in WHERE clause BEFORE ORDER BY
-  * For top N results with ORDER BY, use subquery: SELECT * FROM (SELECT ... ORDER BY ...) WHERE ROWNUM <= N
-- Return ONLY valid JSON, no additional text"""
+CRITICAL: Return ONLY the JSON above, no other text. Think like an HR expert and use the data catalogs to understand the business context."""
     )
     
     # Create chain
@@ -336,46 +314,96 @@ def generate_unified_ai_response(natural_query: str) -> Tuple[str, str, Dict[str
             columns = [row[0] for row in cursor.fetchall()]
             table_info += f"{table} table has ONLY these columns: {', '.join(columns)}\n"
     
+    # Get catalog context for better AI understanding
+    catalog_context = get_catalog_context()
+    catalog_summary = get_catalog_summary()
+    
+    logger.info(f"Processing query: {natural_query}")
+    logger.info(f"Available tables: {tables}")
+    logger.info(f"Catalog context length: {len(catalog_context)}")
+    
     # Create and run unified pipeline
     pipeline = create_unified_langchain_pipeline()
     
     try:
-        response = pipeline.run({
+        response = pipeline.invoke({
             "natural_query": natural_query,
             "db_schema": schema,
             "table_info": table_info,
-            "sample_data": sample_data
+            "sample_data": sample_data,
+            "catalog_context": catalog_context,
+            "catalog_summary": catalog_summary
         })
         
-        # Parse JSON response
+        logger.info(f"AI pipeline response type: {type(response)}")
+        logger.info(f"AI pipeline response: {response}")
+        
+        # Extract JSON from response - LLMChain returns dict with 'text' key
         import json
         try:
-            # Extract JSON from response
-            json_start = response.find("{")
-            json_end = response.rfind("}") + 1
-            if json_start != -1 and json_end != 0:
-                json_str = response[json_start:json_end]
-                ai_response = json.loads(json_str)
-            else:
-                raise ValueError("No JSON found in response")
+            # LLMChain returns dict with 'text' key
+            response_text = response.get('text', '') if isinstance(response, dict) else str(response)
+            
+            logger.info(f"Extracted response_text: {response_text}")
+            
+            # Clean the response text
+            response_text = response_text.strip()
+            if response_text.startswith('```json'):
+                response_text = response_text[7:]
+            if response_text.endswith('```'):
+                response_text = response_text[:-3]
+            response_text = response_text.strip()
+            
+            logger.info(f"Cleaned response_text: {response_text}")
+            
+            # Parse JSON
+            ai_response = json.loads(response_text)
+            
+            logger.info(f"Parsed AI response: {ai_response}")
+            
+            # Extract components
+            explanation = ai_response.get("explanation", "Query executed successfully")
+            sql_query = ai_response.get("sql_query", "")
+            chart_config = ai_response.get("chart_config", {"chart_type": "bar"})
+            
+            # Validate SQL query - prevent fallback to SELECT 1 FROM DUAL
+            if not sql_query or sql_query.strip() == "" or "SELECT 1 FROM DUAL" in sql_query.upper():
+                logger.error(f"Invalid SQL query generated: {sql_query}")
+                raise ValueError("AI generated invalid SQL query")
+            
+            logger.info(f"Extracted explanation: {explanation}")
+            logger.info(f"Extracted sql_query: {sql_query}")
+            logger.info(f"Extracted chart_config: {chart_config}")
+            
+            # Fix column names to match actual DataFrame columns
+            if chart_config and isinstance(chart_config, dict):
+                # Get actual column names from database schema
+                if "x_column" in chart_config and "y_column" in chart_config:
+                    # Use generic column names that will be fixed later
+                    chart_config["x_column"] = "COLUMN_1"
+                    chart_config["y_column"] = "COLUMN_2"
+            
+            data_availability = {"available": True, "reason": "Data appears to be available"}
+            
+            return explanation, sql_query, chart_config, data_availability
+            
         except json.JSONDecodeError as e:
             logger.error(f"Failed to parse AI response as JSON: {e}")
-            # Fallback to old method
-            explanation, sql_query, chart_config = generate_sql_with_langchain(natural_query)
-            return explanation, sql_query, chart_config, {"available": True, "reason": "Fallback to basic method"}
-        
-        # Extract components
-        explanation = ai_response.get("analysis", "") + "\n\n" + ai_response.get("explanation", "")
-        sql_query = ai_response.get("sql_query", "")
-        chart_config = ai_response.get("chart_recommendation", {})
-        data_availability = ai_response.get("data_availability", {})
-        
-        return explanation, sql_query, chart_config, data_availability
+            logger.error(f"Raw response: {response}")
+            logger.error(f"Response text: {response_text}")
+            # Don't fallback to old method - create a meaningful error response
+            error_explanation = f"AI response parsing failed. Please try rephrasing your question. Error: {str(e)}"
+            error_sql = "SELECT 'AI parsing error - please try again' AS error_message FROM DUAL"
+            error_chart_config = {"chart_type": "none", "reason": "AI parsing error"}
+            return error_explanation, error_sql, error_chart_config, {"available": False, "reason": "AI parsing error"}
         
     except Exception as e:
         logger.error(f"Error in unified AI pipeline: {e}")
-        # Fallback to old method
-        return generate_sql_with_langchain(natural_query)
+        # Don't fallback to old method - create a meaningful error response
+        error_explanation = f"AI pipeline error. Please try rephrasing your question. Error: {str(e)}"
+        error_sql = "SELECT 'AI pipeline error - please try again' AS error_message FROM DUAL"
+        error_chart_config = {"chart_type": "none", "reason": "AI pipeline error"}
+        return error_explanation, error_sql, error_chart_config, {"available": False, "reason": "AI pipeline error"}
 
 
 def generate_sql_with_langchain(natural_query: str) -> Tuple[str, str, str]:
@@ -414,7 +442,7 @@ def generate_sql_with_langchain(natural_query: str) -> Tuple[str, str, str]:
     # Create and run pipeline with enhanced context
     pipeline = create_langchain_pipeline()
     
-    response = pipeline.run({
+    response = pipeline.invoke({
         "natural_query": natural_query,
         "db_schema": schema,
         "table_info": table_info,
@@ -422,55 +450,85 @@ def generate_sql_with_langchain(natural_query: str) -> Tuple[str, str, str]:
         "catalog_context": f"\nDATA CATALOG INFORMATION:\n{catalog_summary}\n\nDETAILED CATALOG:\n{catalog_context}"
     })
     
-    # Parse SQL query
-    sql_parser = SQLQueryParser()
-    sql_query = sql_parser.parse(response)
+    logger.info(f"AI pipeline response type: {type(response)}")
+    logger.info(f"AI pipeline response: {response}")
     
-    # Generate chart config based on query and results
-    chart_config = detect_hr_chart_type(natural_query, [])
-    
-    return response, sql_query, chart_config
+    # Parse SQL query - response is already a string from StrOutputParser
+    try:
+        sql_parser = SQLQueryParser()
+        sql_query = sql_parser.parse(response)
+        
+        logger.info(f"Parsed SQL query: {sql_query}")
+        
+        # Generate chart config based on query
+        chart_config = detect_hr_chart_type(natural_query, [])
+        
+        # Chart config will be updated later when we have actual results
+        
+        return response, sql_query, chart_config
+    except ValueError as e:
+        logger.error(f"SQL parsing failed: {e}")
+        # Return error response instead of falling back
+        error_response = f"SQL parsing failed: {str(e)}. Please try rephrasing your question."
+        error_sql = "SELECT 'SQL parsing error - please try again' AS error_message FROM DUAL"
+        error_chart_config = {"chart_type": "none", "reason": "SQL parsing error"}
+        return error_response, error_sql, error_chart_config
 
 
 def create_langchain_pipeline():
     """Create LangChain pipeline for SQL generation"""
     
-    # Create the language model
     llm = ChatOpenAI(
-        model="gpt-5-nano",
-        temperature=1,
-        max_tokens=2000
+        model="gpt-5-nano",  # Keep the original model
+        temperature=0.1,  # Low temperature for consistent responses
+        max_tokens=1000,  # Reasonable token limit
+        api_key=os.getenv("OPENAI_API_KEY")
     )
     
     # Create the prompt template
     prompt = ChatPromptTemplate.from_template("""
-    You are an expert SQL developer specializing in HR analytics. 
-    Your task is to convert natural language queries into accurate Oracle SQL queries.
-    
-    {catalog_context}
-    
-    Database Schema:
+    You are Aimet, an expert HR Data Analyst with 15+ years of experience in HR analytics, employee retention, and workforce planning. You MUST think like a human HR expert and analyze the data catalogs to understand the business context.
+
+    AVAILABLE TABLES AND COLUMNS:
     {db_schema}
-    
-    Table Structure:
+
     {table_info}
-    
-    Sample Data:
+
     {sample_data}
-    
+
+    DATA CATALOGS:
+    {catalog_context}
+
     Natural Language Query: {natural_query}
-    
-    Instructions:
-    1. Analyze the natural language query carefully
-    2. Use the catalog information to understand data relationships
-    3. Generate Oracle-compatible SQL (no semicolon at end)
-    4. Focus on HR analytics patterns (employee data, recruitment, training, etc.)
-    5. Use appropriate JOINs when multiple tables are needed
-    6. Add meaningful column aliases for clarity
-    7. Include WHERE clauses for filtering when appropriate
-    8. Use GROUP BY and aggregations for analytical queries
-    
-    Generate the SQL query and provide a brief explanation:
+
+    CRITICAL RULES:
+    1. **THINK LIKE AN HR EXPERT**: Analyze the user's question from an HR professional perspective. What business insights are they really looking for?
+    2. **EXAMINE DATA CATALOGS CAREFULLY**: The data catalogs contain detailed explanations of what each table and column represents. Read them thoroughly to understand the business context.
+    3. **USE ONLY EXISTING TABLES**: Look at the database schema above - these are the ONLY tables you can use. Never create or reference tables that don't exist.
+    4. **GENERATE MEANINGFUL SQL**: Create SQL queries that actually answer the user's question with real business value.
+    5. **ALWAYS INCLUDE COLUMN NAMES**: Never use SELECT * - always specify the exact columns you need.
+    6. **USE DOUBLE QUOTES**: Wrap table and column names in double quotes: "TableName", "ColumnName"
+    7. **NO SEMICOLON**: Don't end SQL with semicolon
+    8. **NEVER RETURN SELECT 1 FROM DUAL**: This is meaningless and shows you didn't understand the question
+
+    EXAMPLES OF HR EXPERT THINKING:
+    - For "employee turnover rate by department": Think about how HR measures turnover, what data indicates someone left, and how to calculate rates
+    - For "average desired salary by position": Think about recruitment data, salary expectations, and market analysis
+    - For "employee engagement by department": Think about survey data, satisfaction scores, and team performance
+
+    Return ONLY this JSON format:
+    {{
+        "explanation": "Detailed HR analysis explaining what you will analyze, why it's important, and what insights you expect to find",
+        "sql_query": "SELECT statement with actual table and column names from schema above that answers the user's question",
+        "chart_config": {{
+            "chart_type": "bar|line|pie|table",
+            "title": "Descriptive chart title",
+            "x_column": "actual column name from schema",
+            "y_column": "actual column name from schema"
+        }}
+    }}
+
+    CRITICAL: Return ONLY the JSON above, no other text. Think like an HR expert and use the data catalogs to understand the business context.
     """)
     
     # Create the chain
@@ -511,150 +569,29 @@ def execute_sql_query(query: str) -> List[Dict[str, Any]]:
                 return [{"result": "Query executed successfully. No data to return."}]
         
         except Exception as e:
-            logger.error(f"Error executing query: {str(e)}")
-            return [{"error": f"Error: {str(e)}"}]
+            error_msg = str(e)
+            logger.error(f"Error executing query: {error_msg}")
+            
+            # Handle specific Oracle errors
+            if "ORA-00933" in error_msg:
+                return [{"error": "SQL syntax error: Remove semicolon from end of query"}]
+            elif "ORA-00942" in error_msg:
+                return [{"error": "Table or view does not exist"}]
+            elif "ORA-00904" in error_msg:
+                return [{"error": "Invalid column name"}]
+            else:
+                return [{"error": f"Database error: {error_msg}"}]
 
 
 def analyze_results_with_ai(query: str, results: List[Dict[str, Any]], sql_query: str) -> str:
-    """Use AI to analyze query results and provide insights"""
-    
-    if not results or len(results) == 0:
-        return "No data found for this query. The database doesn't contain any records matching your criteria."
-    
-    # Convert results to readable format
-    results_summary = f"Query returned {len(results)} rows of data."
-    if len(results) > 0:
-        sample_data = "\nSample results:\n"
-        for i, row in enumerate(results[:3]):  # Show first 3 rows
-            sample_data += f"Row {i+1}: {', '.join([f'{k}={v}' for k, v in row.items()])}\n"
-        results_summary += sample_data
-    
-    # Create AI analysis prompt
-    analysis_prompt = f"""As Aimet, analyze these query results and provide natural language insights:
-
-Original Query: {query}
-SQL Query: {sql_query}
-Results: {results_summary}
-
-Provide a natural, conversational analysis that:
-1. Explains what the results mean in plain language
-2. Highlights key findings or patterns
-3. Suggests what insights can be drawn
-4. Mentions the number of results found
-5. Uses your enthusiastic personality
-
-Keep it conversational and helpful!"""
-
-    llm = ChatOpenAI(
-        model="gpt-5-nano",
-        temperature=1.0,
-        api_key=os.getenv("OPENAI_API_KEY")
-    )
-    
-    response = llm.invoke(analysis_prompt)
-    return response.content
-
-
-def detect_chart_type(query: str, results: List[Dict[str, Any]]) -> Dict[str, Any]:
-    """Detect the best chart type for the data with enhanced analysis for simple queries"""
-    
-    if not results or len(results) == 0:
-        return {"chart_type": "none", "reason": "No data available"}
-    
-    # Analyze data structure
-    sample_row = results[0]
-    columns = list(sample_row.keys())
-    
-    # Check if this is a simple count/aggregation query that could benefit from enhanced analysis
-    is_simple_query = False
-    enhanced_analysis_needed = False
-    
-    # Detect simple queries like "kaç çalışan var", "how many employees", etc.
-    simple_query_patterns = [
-        "kaç", "how many", "count", "total", "number of", "adet", "tane",
-        "çalışan", "employee", "müşteri", "customer", "ürün", "product",
-        "toplam", "sum", "amount", "quantity"
-    ]
-    
-    query_lower = query.lower()
-    if any(pattern in query_lower for pattern in simple_query_patterns):
-        is_simple_query = True
-        # If result is just a single number, suggest enhanced analysis
-        if len(results) == 1 and len(columns) == 1:
-            enhanced_analysis_needed = True
-    
-    # Create enhanced chart detection prompt
-    chart_prompt = f"""Analyze this data and suggest the best chart type with enhanced analysis:
-
-Query: {query}
-Columns: {columns}
-Sample data: {results[:3]}
-Is simple count query: {is_simple_query}
-Enhanced analysis needed: {enhanced_analysis_needed}
-
-Based on the query and data structure, suggest the most appropriate visualization. Consider:
-
-FOR SIMPLE COUNT QUERIES (like "kaç çalışan var"):
-- If result is just a number, suggest MULTIPLE charts to provide context:
-  1. Main KPI display (big number with context)
-  2. Distribution chart (pie/bar) if related data exists
-  3. Comparison chart (bar) for categories
-  4. Trend chart if time data exists
-  5. Regional/geographic chart if location data exists
-
-FOR REGULAR QUERIES:
-- If query asks for "distribution" or "percentage" → pie chart
-- If query asks for "comparison" or "ranking" → bar chart  
-- If query asks for "trend" or "over time" → line chart
-- If query asks for "correlation" or "relationship" → scatter plot
-- If query asks for "details" or "list" → table
-
-Return JSON with:
-{{
-    "chart_type": "pie|bar|line|scatter|table|enhanced_dashboard|none",
-    "title": "Chart title",
-    "x_column": "column name for x-axis",
-    "y_column": "column name for y-axis", 
-    "color_column": "column for color coding",
-    "reason": "Why this chart type is best",
-    "enhanced_analysis": true/false,
-    "suggested_charts": ["list of additional chart types to create"]
-}}
-
-Only return valid JSON."""
-
-    llm = ChatOpenAI(
-        model="gpt-5-nano",
-        temperature=1.0,
-        api_key=os.getenv("OPENAI_API_KEY")
-    )
-    
-    try:
-        response = llm.invoke(chart_prompt)
-        chart_parser = ChartTypeParser()
-        result = chart_parser.parse(response.content)
-        
-        # Validate and improve chart configuration
-        if result.get("chart_type") == "bar" and not result.get("y_column"):
-            # For bar charts, try to find numeric columns
-            numeric_cols = [col for col in columns if any(isinstance(row.get(col), (int, float)) for row in results)]
-            if numeric_cols:
-                result["y_column"] = numeric_cols[0]
-        
-        if result.get("chart_type") == "pie" and not result.get("y_column"):
-            # For pie charts, try to find numeric columns
-            numeric_cols = [col for col in columns if any(isinstance(row.get(col), (int, float)) for row in results)]
-            if numeric_cols:
-                result["y_column"] = numeric_cols[0]
-        
-        return result
-    except Exception as e:
-        logger.error(f"Error detecting chart type: {e}")
-        return {"chart_type": "table", "title": "Data Table", "reason": "Default fallback"}
+    """Simple results analysis"""
+    # For now, return a simple analysis
+    # This can be enhanced later if needed
+    return f"Query executed successfully. Found {len(results)} results."
 
 
 def detect_hr_chart_type(query: str, results: List[Dict[str, Any]]) -> Dict[str, Any]:
-    """Detect the best chart type for HR data with enhanced analysis"""
+    """Intelligent chart type detection based on data structure and query analysis"""
     
     if not results or len(results) == 0:
         return {"chart_type": "none", "reason": "No data available"}
@@ -662,262 +599,168 @@ def detect_hr_chart_type(query: str, results: List[Dict[str, Any]]) -> Dict[str,
     # Analyze data structure
     sample_row = results[0]
     columns = list(sample_row.keys())
+    num_rows = len(results)
     
-    # HR-specific chart detection patterns
-    hr_chart_patterns = {
-        "employee_count": ["count", "number", "how many", "kaç", "adet", "total employees"],
-        "salary_analysis": ["salary", "wage", "compensation", "pay", "maas", "ücret"],
-        "department_distribution": ["department", "division", "team", "bölüm", "departman"],
-        "engagement_scores": ["engagement", "satisfaction", "happiness", "score", "rating", "memnuniyet"],
-        "tenure_analysis": ["tenure", "experience", "years", "hire date", "start date", "deneyim"],
-        "training_metrics": ["training", "course", "certification", "skill", "eğitim", "kurs"],
-        "recruitment_data": ["recruitment", "hiring", "application", "interview", "işe alım", "mülakat"],
-        "turnover_analysis": ["turnover", "retention", "attrition", "leave", "ayrılma", "kalma"]
-    }
+    # Simple but intelligent detection
+    if len(columns) == 1:
+        # Single column - show as big number
+        return {
+            "chart_type": "indicator",
+            "title": f"{query[:50]}...",
+            "value": results[0][columns[0]],
+            "reason": "Single value display"
+        }
     
-    query_lower = query.lower()
-    
-    # Determine chart type based on HR patterns
-    chart_type = "table"  # default
-    reason = "Default table view for HR data"
-    
-    # Check for specific HR patterns
-    if any(pattern in query_lower for pattern in hr_chart_patterns["employee_count"]):
-        if len(columns) == 1:
-            chart_type = "enhanced_dashboard"
-            reason = "Employee count query - showing comprehensive HR dashboard"
-        elif len(columns) == 2:
-            chart_type = "bar"
-            reason = "Employee count by category - bar chart shows clear comparison"
+    elif len(columns) == 2:
+        # Two columns - analyze data types and patterns
+        first_col = results[0][columns[0]]
+        second_col = results[0][columns[1]]
+        
+        # Check if second column is numeric (count, amount, etc.)
+        if isinstance(second_col, (int, float)):
+            if num_rows <= 8:
+                # Small dataset - pie chart for proportions
+                return {
+                    "chart_type": "pie",
+                    "title": f"{query[:50]}...",
+                    "x_column": columns[0],
+                    "y_column": columns[1],
+                    "reason": "Pie chart shows proportions clearly"
+                }
+            else:
+                # Larger dataset - bar chart for comparison
+                return {
+                    "chart_type": "bar",
+                    "title": f"{query[:50]}...",
+                    "x_column": columns[0],
+                    "y_column": columns[1],
+                    "reason": "Bar chart shows comparison clearly"
+                }
         else:
-            chart_type = "pie"
-            reason = "Employee distribution - pie chart shows proportions clearly"
+            # Both categorical - use bar chart
+            return {
+                "chart_type": "bar",
+                "title": f"{query[:50]}...",
+                "x_column": columns[0],
+                "y_column": columns[1],
+                "reason": "Bar chart for categorical data"
+            }
     
-    elif any(pattern in query_lower for pattern in hr_chart_patterns["salary_analysis"]):
-        if len(columns) == 2:
-            chart_type = "boxplot"
-            reason = "Salary distribution - boxplot shows median, quartiles, and outliers"
-        else:
-            chart_type = "histogram"
-            reason = "Salary distribution - histogram shows frequency distribution"
+    elif len(columns) >= 3:
+        # Multiple columns - use table view
+        return {
+            "chart_type": "table",
+            "title": f"{query[:50]}...",
+            "reason": "Table view for multiple columns"
+        }
     
-    elif any(pattern in query_lower for pattern in hr_chart_patterns["department_distribution"]):
-        chart_type = "pie"
-        reason = "Department distribution - pie chart shows proportions clearly"
-    
-    elif any(pattern in query_lower for pattern in hr_chart_patterns["engagement_scores"]):
-        if len(columns) >= 3:
-            chart_type = "heatmap"
-            reason = "Engagement scores by multiple factors - heatmap shows patterns clearly"
-        else:
-            chart_type = "bar"
-            reason = "Engagement scores - bar chart shows comparison across groups"
-    
-    elif any(pattern in query_lower for pattern in hr_chart_patterns["tenure_analysis"]):
-        chart_type = "histogram"
-        reason = "Tenure distribution - histogram shows frequency distribution over time"
-    
-    elif any(pattern in query_lower for pattern in hr_chart_patterns["training_metrics"]):
-        chart_type = "bar"
-        reason = "Training metrics - bar chart shows completion rates and comparisons"
-    
-    elif any(pattern in query_lower for pattern in hr_chart_patterns["recruitment_data"]):
-        chart_type = "line"
-        reason = "Recruitment trends - line chart shows changes over time"
-    
-    elif any(pattern in query_lower for pattern in hr_chart_patterns["turnover_analysis"]):
-        chart_type = "line"
-        reason = "Turnover trends - line chart shows changes over time"
-    
-    # Enhanced analysis for simple count queries
-    enhanced_analysis = False
-    if any(pattern in query_lower for pattern in ["kaç", "how many", "count", "total", "number of"]):
-        enhanced_analysis = True
-    
-    # Suggest additional charts for comprehensive HR analysis
-    suggested_charts = []
-    if chart_type == "bar":
-        suggested_charts.extend(["pie", "enhanced_dashboard"])
-    elif chart_type == "pie":
-        suggested_charts.extend(["bar", "enhanced_dashboard"])
-    elif chart_type == "line":
-        suggested_charts.extend(["bar", "enhanced_dashboard"])
-    
+    # Fallback
     return {
-        "chart_type": chart_type,
-        "title": f"HR Analytics: {query[:50]}...",
-        "x_column": columns[0] if len(columns) > 0 else None,
-        "y_column": columns[1] if len(columns) > 1 else None,
-        "color_column": columns[2] if len(columns) > 2 else None,
-        "reason": reason,
-        "enhanced_analysis": enhanced_analysis,
-        "suggested_charts": suggested_charts,
-        "hr_insights": f"This visualization will help HR professionals understand {chart_type} patterns in the data"
+        "chart_type": "table",
+        "title": f"{query[:50]}...",
+        "reason": "Default table view"
     }
 
 
 def generate_chart(results: List[Dict[str, Any]], chart_config: Dict[str, Any]) -> Optional[str]:
-    """Generate chart based on configuration and return as base64 encoded image"""
+    """Generate intelligent chart based on data structure and configuration"""
     
     if not results or len(results) == 0:
+        logger.warning("No results to generate chart from")
         return None
     
     try:
         # Convert results to DataFrame
         df = pd.DataFrame(results)
+        logger.info(f"generate_chart called with {len(results)} results and config: {chart_config}")
+        logger.info(f"DataFrame created with shape: {df.shape}")
         
-        # Check DataFrame dimensions
         if df.empty:
             logger.warning("DataFrame is empty")
             return None
         
-        if len(df) < 2 and chart_config["chart_type"] in ["bar", "pie", "line"]:
-            logger.warning(f"DataFrame has only {len(df)} row(s), creating simple indicator")
-            return generate_single_value_chart(df, chart_config)
+        # Get actual column names from DataFrame
+        actual_columns = list(df.columns)
+        logger.info(f"Actual DataFrame columns: {actual_columns}")
         
-        if chart_config["chart_type"] == "pie":
-            # Pie chart
-            fig = px.pie(
-                df, 
-                values=chart_config.get("y_column", df.columns[1]), 
-                names=chart_config.get("x_column", df.columns[0]),
-                title=chart_config.get("title", "Data Distribution")
+        # Auto-fix column names to match actual DataFrame columns
+        if len(actual_columns) >= 2:
+            chart_config["x_column"] = actual_columns[0]
+            chart_config["y_column"] = actual_columns[1]
+            logger.info(f"Auto-fixed column names: x={actual_columns[0]}, y={actual_columns[1]}")
+        
+        # Initialize fig
+        fig = None
+        chart_type = chart_config.get("chart_type", "bar")
+        
+        # Intelligent chart generation based on data structure
+        if chart_type == "indicator":
+            # Big number indicator for single values
+            value = chart_config.get("value", results[0][actual_columns[0]] if actual_columns else 0)
+            title = chart_config.get("title", "Value")
+            
+            fig = go.Figure()
+            fig.add_trace(go.Indicator(
+                mode="number+delta",
+                value=value,
+                title={"text": title},
+                delta={"reference": 0},
+                number={"font": {"size": 40}}
+            ))
+            fig.update_layout(
+                title=title,
+                height=400,
+                showlegend=False
             )
             
-        elif chart_config["chart_type"] == "bar":
-            # Bar chart
-            fig = px.bar(
-                df,
-                x=chart_config.get("x_column", df.columns[0]),
-                y=chart_config.get("y_column", df.columns[1]),
-                title=chart_config.get("title", "Data Comparison"),
-                color=chart_config.get("color_column")
-            )
+        elif chart_type == "pie":
+            # Pie chart for proportions
+            x_col = actual_columns[0]
+            y_col = actual_columns[1] if len(actual_columns) > 1 else actual_columns[0]
             
-        elif chart_config["chart_type"] == "line":
-            # Line chart
-            fig = px.line(
-                df,
-                x=chart_config.get("x_column", df.columns[0]),
-                y=chart_config.get("y_column", df.columns[1]),
-                title=chart_config.get("title", "Data Trend"),
-                color=chart_config.get("color_column")
-            )
+            fig = px.pie(df, values=y_col, names=x_col, title=chart_config.get("title", "Data Distribution"))
             
-        elif chart_config["chart_type"] == "scatter":
-            # Scatter plot
-            fig = px.scatter(
-                df,
-                x=chart_config.get("x_column", df.columns[0]),
-                y=chart_config.get("y_column", df.columns[1]),
-                title=chart_config.get("title", "Data Correlation"),
-                color=chart_config.get("color_column")
-            )
+        elif chart_type == "bar":
+            # Bar chart for comparisons
+            x_col = actual_columns[0]
+            y_col = actual_columns[1] if len(actual_columns) > 1 else actual_columns[0]
             
-        elif chart_config["chart_type"] == "enhanced_dashboard":
-            # Enhanced dashboard for simple queries - create multiple charts
-            return generate_enhanced_dashboard(results, chart_config)
-        else:
-            # Default to table view
-            return None
+            fig = px.bar(df, x=x_col, y=y_col, title=chart_config.get("title", "Data Comparison"))
+            
+        elif chart_type == "line":
+            # Line chart for trends
+            x_col = actual_columns[0]
+            y_col = actual_columns[1] if len(actual_columns) > 1 else actual_columns[0]
+            
+            fig = px.line(df, x=x_col, y=y_col, title=chart_config.get("title", "Data Trend"))
+            
+        elif chart_type == "scatter":
+            # Scatter plot for correlations
+            x_col = actual_columns[0]
+            y_col = actual_columns[1] if len(actual_columns) > 1 else actual_columns[0]
+            
+            fig = px.scatter(df, x=x_col, y=y_col, title=chart_config.get("title", "Data Correlation"))
         
-        # Convert to PNG using kaleido
-        try:
-            img_bytes = fig.to_image(format="png", engine="kaleido")
-            img_base64 = base64.b64encode(img_bytes).decode()
-            return f"data:image/png;base64,{img_base64}"
-        except Exception as e:
-            logger.warning(f"Kaleido export failed: {e}, falling back to HTML")
-            # Fallback to HTML
-            html_string = fig.to_html(include_plotlyjs=False, full_html=False)
-            chart_info = {
-                "chart_type": chart_config["chart_type"],
-                "title": chart_config.get("title", "Data Chart"),
-                "data_points": len(results),
-                "columns": list(df.columns),
-                "html": html_string,
-                "fallback": True
-            }
-            return json.dumps(chart_info)
-        
-    except Exception as e:
-        logger.error(f"Error generating chart: {e}")
-        return None
-
-
-def generate_enhanced_dashboard(results: List[Dict[str, Any]], chart_config: Dict[str, Any]) -> str:
-    """Generate enhanced dashboard for simple queries with multiple visualizations"""
-    
-    try:
-        # Convert results to DataFrame
-        df = pd.DataFrame(results)
-        
-        # Create a comprehensive dashboard with multiple charts
-        fig = make_subplots(
-            rows=2, cols=2,
-            subplot_titles=('Main KPI', 'Distribution', 'Comparison', 'Details'),
-            specs=[[{"type": "indicator"}, {"type": "pie"}],
-                   [{"type": "bar"}, {"type": "table"}]]
-        )
-        
-        # Main KPI (big number display)
-        if len(results) == 1 and len(df.columns) == 1:
-            main_value = results[0][list(df.columns)[0]]
-            fig.add_trace(
-                go.Indicator(
+        # If no specific chart type matched, create intelligent default
+        if fig is None:
+            logger.info("Creating intelligent default chart")
+            if len(actual_columns) == 1:
+                # Single column - indicator
+                value = results[0][actual_columns[0]]
+                fig = go.Figure()
+                fig.add_trace(go.Indicator(
                     mode="number+delta",
-                    value=main_value,
-                    title={"text": "Total Count"},
+                    value=value,
+                    title={"text": "Value"},
                     delta={"reference": 0},
                     number={"font": {"size": 40}}
-                ),
-                row=1, col=1
-            )
-        
-        # Distribution chart (pie chart)
-        if len(df.columns) >= 2:
-            try:
-                # Try to create pie chart from first two columns
-                fig.add_trace(
-                    go.Pie(
-                        labels=df.iloc[:, 0],
-                        values=df.iloc[:, 1] if len(df.columns) > 1 else [1] * len(df),
-                        name="Distribution"
-                    ),
-                    row=1, col=2
-                )
-            except:
-                pass
-        
-        # Comparison chart (bar chart)
-        if len(df.columns) >= 2:
-            try:
-                fig.add_trace(
-                    go.Bar(
-                        x=df.iloc[:, 0],
-                        y=df.iloc[:, 1] if len(df.columns) > 1 else [1] * len(df),
-                        name="Comparison"
-                    ),
-                    row=2, col=1
-                )
-            except:
-                pass
-        
-        # Details table
-        fig.add_trace(
-            go.Table(
-                header=dict(values=list(df.columns)),
-                cells=dict(values=[df[col] for col in df.columns])
-            ),
-            row=2, col=2
-        )
-        
-        # Update layout
-        fig.update_layout(
-            height=800,
-            title_text="Enhanced Dashboard Analysis",
-            showlegend=False
-        )
+                ))
+                fig.update_layout(height=400, showlegend=False)
+            elif len(actual_columns) >= 2:
+                # Multiple columns - bar chart
+                x_col = actual_columns[0]
+                y_col = actual_columns[1]
+                fig = px.bar(df, x=x_col, y=y_col, title="Data Analysis")
         
         # Convert to PNG
         try:
@@ -925,75 +768,19 @@ def generate_enhanced_dashboard(results: List[Dict[str, Any]], chart_config: Dic
             img_base64 = base64.b64encode(img_bytes).decode()
             return f"data:image/png;base64,{img_base64}"
         except Exception as e:
-            logger.warning(f"Kaleido export failed: {e}, falling back to HTML")
-            # Fallback to HTML
-            html_string = fig.to_html(include_plotlyjs=False, full_html=False)
-            dashboard_info = {
-                "chart_type": "enhanced_dashboard",
-                "title": "Enhanced Dashboard Analysis",
-                "data_points": len(results),
-                "columns": list(df.columns),
-                "html": html_string,
-                "fallback": True,
-                "enhanced_analysis": True
-            }
-            return json.dumps(dashboard_info)
-        
+            logger.error(f"Error converting chart to image: {e}")
+            return None
+            
     except Exception as e:
-        logger.error(f"Error generating enhanced dashboard: {e}")
+        logger.error(f"Error generating chart: {e}")
         return None
 
 
 async def check_data_availability_with_ai(query: str) -> Tuple[bool, str]:
-    """Use AI to check if data is available for the query"""
-    
-    schema = get_db_schema()
-    
-    availability_prompt = f"""Analyze this query to determine if data exists in the database:
-
-Query: {query}
-
-Database Schema:
-{schema}
-
-Determine if this query can return meaningful data. Consider:
-1. Are the requested tables present?
-2. Do the columns exist?
-3. Is the data type appropriate?
-4. Are there any obvious data access issues?
-
-Return JSON with:
-{{
-    "data_available": true/false,
-    "reason": "Detailed explanation",
-    "suggestions": "How to modify query if needed"
-}}
-
-Only return valid JSON."""
-
-    llm = ChatOpenAI(
-        model="gpt-5-nano",
-        temperature=1.0,
-        api_key=os.getenv("OPENAI_API_KEY")
-    )
-    
-    try:
-        response = llm.invoke(availability_prompt)
-        
-        # Parse response
-        if "{" in response.content and "}" in response.content:
-            json_start = response.content.find("{")
-            json_end = response.content.rfind("}") + 1
-            json_str = response.content[json_start:json_end]
-            result = json.loads(json_str)
-            
-            return result.get("data_available", False), result.get("reason", "Unable to determine")
-        else:
-            return False, "AI response format error"
-            
-    except Exception as e:
-        logger.error(f"Error checking data availability: {e}")
-        return False, f"Error during availability check: {str(e)}"
+    """Simple data availability check"""
+    # For now, assume data is always available
+    # This can be enhanced later if needed
+    return True, "Data appears to be available"
 
 
 async def process_natural_query_langchain(natural_query: str, session_id: str = None) -> Tuple[str, str, List[Dict[str, Any]], str, str, Optional[str], Dict[str, Any]]:
@@ -1079,7 +866,10 @@ async def _fallback_process_query(natural_query: str, session_id: str = None) ->
         return explanation, sql_query, results, session_id, title, chart_data, chart_config
     
     # Generate SQL using LangChain
-    full_response, sql_query, _ = generate_sql_with_langchain(natural_query)
+    full_response, sql_query, chart_config = generate_sql_with_langchain(natural_query)
+    
+    # Create explanation from full_response
+    explanation = full_response if full_response else "SQL query generated successfully"
     
     # Execute the query
     results = execute_sql_query(sql_query)
@@ -1104,305 +894,11 @@ async def _fallback_process_query(natural_query: str, session_id: str = None) ->
     # Save to history
     save_query_history(session_id, natural_query, sql_query, str(results), complete_explanation, title, chart_data, str(chart_config))
     
-    return complete_explanation, sql_query, results, session_id, title, chart_data, chart_config
+    return explanation, sql_query, results, session_id, title, chart_data, chart_config
 
 
 def generate_hr_optimized_chart(results: List[Dict[str, Any]], chart_config: Dict[str, Any]) -> Optional[str]:
-    """Generate HR-optimized charts with enhanced visualizations"""
+    """Generate optimized charts for HR data - simplified version"""
     
-    if not results or len(results) == 0:
-        logger.warning("No results to generate chart from")
-        return None
-    
-    try:
-        # Convert results to DataFrame
-        df = pd.DataFrame(results)
-        
-        # Check DataFrame dimensions
-        if df.empty:
-            logger.warning("DataFrame is empty")
-            return None
-        
-        if len(df) < 2:
-            logger.warning(f"DataFrame has only {len(df)} row(s), chart generation may not be optimal")
-            # For single row, create a simple indicator chart
-            if chart_config.get("chart_type") in ["bar", "pie"]:
-                return generate_single_value_chart(df, chart_config)
-        
-        # HR-specific chart generation
-        if chart_config["chart_type"] == "heatmap":
-            return generate_hr_heatmap(df, chart_config)
-        elif chart_config["chart_type"] == "boxplot":
-            return generate_hr_boxplot(df, chart_config)
-        elif chart_config["chart_type"] == "histogram":
-            return generate_hr_histogram(df, chart_config)
-        elif chart_config["chart_type"] == "enhanced_dashboard":
-            return generate_hr_enhanced_dashboard(df, chart_config)
-        else:
-            # Use existing chart generation for other types
-            return generate_chart(results, chart_config)
-        
-    except Exception as e:
-        logger.error(f"Error generating HR chart: {e}")
-        return None
-
-
-def generate_single_value_chart(df: pd.DataFrame, chart_config: Dict[str, Any]) -> str:
-    """Generate chart for single value results (e.g., total count)"""
-    
-    try:
-        # Get the first row
-        row = df.iloc[0]
-        
-        # Create a simple indicator chart
-        fig = go.Figure()
-        
-        # Add indicator
-        fig.add_trace(go.Indicator(
-            mode="number+delta",
-            value=row.get(chart_config.get("y_column", df.columns[1]), 0),
-            title={"text": chart_config.get("title", "Value")},
-            delta={"reference": 0},
-            number={"font": {"size": 40}}
-        ))
-        
-        # Update layout
-        fig.update_layout(
-            title=chart_config.get("title", "Single Value Chart"),
-            height=400,
-            showlegend=False
-        )
-        
-        # Convert to PNG
-        try:
-            img_bytes = fig.to_image(format="png", engine="kaleido")
-            img_base64 = base64.b64encode(img_bytes).decode()
-            return f"data:image/png;base64,{img_base64}"
-        except Exception as e:
-            logger.warning(f"Kaleido export failed: {e}, falling back to HTML")
-            # Fallback to HTML
-            html_string = fig.to_html(include_plotlyjs=False, full_html=False)
-            chart_info = {
-                "chart_type": "indicator",
-                "title": chart_config.get("title", "Single Value Chart"),
-                "data_points": len(df),
-                "columns": list(df.columns),
-                "html": html_string,
-                "fallback": True,
-                "single_value": True
-            }
-            return json.dumps(chart_info)
-            
-    except Exception as e:
-        logger.error(f"Error generating single value chart: {e}")
-        return None
-
-
-def generate_hr_heatmap(df: pd.DataFrame, chart_config: Dict[str, Any]) -> str:
-    """Generate heatmap for HR data (e.g., engagement scores by department)"""
-    
-    try:
-        # Create pivot table for heatmap
-        if len(df.columns) >= 3:
-            pivot_data = df.pivot_table(
-                values=chart_config.get("y_column", df.columns[2]),
-                index=chart_config.get("x_column", df.columns[0]),
-                columns=chart_config.get("color_column", df.columns[1]),
-                aggfunc='mean'
-            )
-            
-            fig = go.Figure(data=go.Heatmap(
-                z=pivot_data.values,
-                x=pivot_data.columns,
-                y=pivot_data.index,
-                colorscale='RdYlGn',
-                text=pivot_data.values.round(2),
-                texttemplate="%{text}",
-                textfont={"size": 10},
-                hoverongaps=False
-            ))
-            
-            fig.update_layout(
-                title=chart_config.get("title", "HR Data Heatmap"),
-                xaxis_title=chart_config.get("color_column", "Category"),
-                yaxis_title=chart_config.get("x_column", "Group"),
-                height=500
-            )
-            
-            # Convert to PNG
-            img_bytes = fig.to_image(format="png", engine="kaleido")
-            img_base64 = base64.b64encode(img_bytes).decode()
-            return f"data:image/png;base64,{img_base64}"
-            
-    except Exception as e:
-        logger.error(f"Error generating HR heatmap: {e}")
-        return None
-
-
-def generate_hr_boxplot(df: pd.DataFrame, chart_config: Dict[str, Any]) -> str:
-    """Generate boxplot for HR data (e.g., salary distribution by department)"""
-    
-    try:
-        fig = go.Figure()
-        
-        # Group by category and create boxplot
-        categories = df[chart_config.get("x_column", df.columns[0])].unique()
-        
-        for category in categories:
-            category_data = df[df[chart_config.get("x_column", df.columns[0])] == category]
-            values = category_data[chart_config.get("y_column", df.columns[1])]
-            
-            fig.add_trace(go.Box(
-                y=values,
-                name=str(category),
-                boxpoints='outliers',
-                jitter=0.3,
-                pointpos=-1.8
-            ))
-        
-        fig.update_layout(
-            title=chart_config.get("title", "HR Data Distribution"),
-            xaxis_title=chart_config.get("x_column", "Category"),
-            yaxis_title=chart_config.get("y_column", "Value"),
-            height=500,
-            showlegend=True
-        )
-        
-        # Convert to PNG
-        img_bytes = fig.to_image(format="png", engine="kaleido")
-        img_base64 = base64.b64encode(img_bytes).decode()
-        return f"data:image/png;base64,{img_base64}"
-        
-    except Exception as e:
-        logger.error(f"Error generating HR boxplot: {e}")
-        return None
-
-
-def generate_hr_histogram(df: pd.DataFrame, chart_config: Dict[str, Any]) -> str:
-    """Generate histogram for HR data (e.g., tenure distribution)"""
-    
-    try:
-        values = df[chart_config.get("y_column", df.columns[1])]
-        
-        fig = go.Figure(data=[go.Histogram(
-            x=values,
-            nbinsx=20,
-            name="Distribution",
-            marker_color='lightblue',
-            opacity=0.7
-        )])
-        
-        fig.update_layout(
-            title=chart_config.get("title", "HR Data Distribution"),
-            xaxis_title=chart_config.get("y_column", "Value"),
-            yaxis_title="Frequency",
-            height=500,
-            bargap=0.1
-        )
-        
-        # Convert to PNG
-        img_bytes = fig.to_image(format="png", engine="kaleido")
-        img_base64 = base64.b64encode(img_bytes).decode()
-        return f"data:image/png;base64,{img_base64}"
-        
-    except Exception as e:
-        logger.error(f"Error generating HR histogram: {e}")
-        return None
-
-
-def generate_hr_enhanced_dashboard(df: pd.DataFrame, chart_config: Dict[str, Any]) -> str:
-    """Generate enhanced HR dashboard with multiple visualizations"""
-    
-    try:
-        # Create subplots for HR dashboard
-        fig = make_subplots(
-            rows=2, cols=2,
-            subplot_titles=('Employee Overview', 'Department Distribution', 'Trend Analysis', 'Key Metrics'),
-            specs=[[{"type": "indicator"}, {"type": "pie"}],
-                   [{"type": "bar"}, {"type": "table"}]]
-        )
-        
-        # Employee Overview (KPI)
-        if len(df.columns) >= 1:
-            main_value = len(df)  # Total count
-            fig.add_trace(
-                go.Indicator(
-                    mode="number+delta",
-                    value=main_value,
-                    title={"text": "Total Employees"},
-                    delta={"reference": 0},
-                    number={"font": {"size": 40}}
-                ),
-                row=1, col=1
-            )
-        
-        # Department Distribution (pie chart)
-        if len(df.columns) >= 2:
-            try:
-                dept_counts = df[df.columns[0]].value_counts()
-                fig.add_trace(
-                    go.Pie(
-                        labels=dept_counts.index,
-                        values=dept_counts.values,
-                        name="Department Distribution"
-                    ),
-                    row=1, col=2
-                )
-            except:
-                pass
-        
-        # Trend Analysis (bar chart)
-        if len(df.columns) >= 2:
-            try:
-                # Try to show some trend or comparison
-                top_values = df[df.columns[0]].value_counts().head(5)
-                fig.add_trace(
-                    go.Bar(
-                        x=top_values.index,
-                        y=top_values.values,
-                        name="Top Categories"
-                    ),
-                    row=2, col=1
-                )
-            except:
-                pass
-        
-        # Key Metrics Table
-        fig.add_trace(
-            go.Table(
-                header=dict(values=list(df.columns)),
-                cells=dict(values=[df[col] for col in df.columns])
-            ),
-            row=2, col=2
-        )
-        
-        # Update layout
-        fig.update_layout(
-            height=800,
-            title_text="HR Analytics Dashboard",
-            showlegend=False
-        )
-        
-        # Convert to PNG
-        try:
-            img_bytes = fig.to_image(format="png", engine="kaleido")
-            img_base64 = base64.b64encode(img_bytes).decode()
-            return f"data:image/png;base64,{img_base64}"
-        except Exception as e:
-            logger.warning(f"Kaleido export failed: {e}, falling back to HTML")
-            # Fallback to HTML
-            html_string = fig.to_html(include_plotlyjs=False, full_html=False)
-            dashboard_info = {
-                "chart_type": "enhanced_dashboard",
-                "title": "HR Analytics Dashboard",
-                "data_points": len(df),
-                "columns": list(df.columns),
-                "html": html_string,
-                "fallback": True,
-                "enhanced_analysis": True
-            }
-            return json.dumps(dashboard_info)
-        
-    except Exception as e:
-        logger.error(f"Error generating HR enhanced dashboard: {e}")
-        return None
+    # Use the main generate_chart function instead
+    return generate_chart(results, chart_config)

@@ -6,9 +6,12 @@ This API provides endpoints:
 - /sessions: Returns all query sessions
 - /chart: Generates charts for query results
 """
-from typing import Dict, List, Any, Optional, Tuple
-import logging
+import asyncio
 import time
+import datetime
+from collections import deque
+from typing import Dict, List, Any, Optional
+import logging
 from fastapi import FastAPI, Request, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
@@ -18,13 +21,11 @@ from langchain_utils import (
     execute_sql_query,
     check_data_availability_with_ai,
     generate_chart,
-    detect_chart_type,
     detect_hr_chart_type
 )
 
 # from user_roles import validate_user_query, get_user_permissions, user_manager
-from query_history import get_all_sessions, save_query_history
-from datetime import datetime
+from query_history import save_query_history
 from openai import OpenAI
 import sqlite3
 
@@ -50,12 +51,12 @@ app = FastAPI(
     version="2.0.0"
 )
 
-# CORS ayarlarını en başa al - CORS middleware must be first
+#CORS middleware settings at first - CORS middleware must be first
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],  # Allow all origins during development
-    allow_credentials=False,  # Set to False when allow_origins=["*"]
-    allow_methods=["*"],  # Allow all methods
+    allow_origins=["http://localhost:3000", "http://localhost:3001", "http://127.0.0.1:3000", "http://127.0.0.1:3001"],  # Specific origins
+    allow_credentials=True,  # Allow credentials
+    allow_methods=["GET", "POST", "PUT", "DELETE", "OPTIONS"],  # Specific methods
     allow_headers=["*"],  # Allow all headers
 )
 
@@ -88,15 +89,22 @@ async def log_requests(request: Request, call_next):
         raise
 
 @app.options("/{full_path:path}")
-async def options_handler():
+async def options_handler(request: Request):
     """Handle preflight OPTIONS requests for CORS"""
-    from fastapi.responses import Response
-    return Response(content="OK")
+    return JSONResponse(
+        content={"message": "OK"},
+        headers={
+            "Access-Control-Allow-Origin": "http://localhost:3000",
+            "Access-Control-Allow-Methods": "GET, POST, PUT, DELETE, OPTIONS",
+            "Access-Control-Allow-Headers": "*",
+            "Access-Control-Allow-Credentials": "true"
+        }
+    )
 
 @app.get("/test-cors")
 async def test_cors():
     """Test endpoint to verify CORS is working"""
-    return {"message": "CORS test successful", "timestamp": datetime.now().isoformat()}
+    return {"message": "CORS test successful", "timestamp": datetime.datetime.now().isoformat()}
 
 @app.get("/")
 async def root():
@@ -165,37 +173,6 @@ class ChartRequest(BaseModel):
     chart_type: Optional[str] = None
     x_column: Optional[str] = None
     y_column: Optional[str] = None
-
-# Global duplicate request tracking
-import hashlib
-_request_cache = {}
-_REQUEST_CACHE_TTL = 5  # 5 saniye
-
-def _get_request_hash(request: Request) -> str:
-    """Request için unique hash oluşturur"""
-    # IP + User-Agent + timestamp (5 saniye granularity)
-    timestamp = int(time.time() / _REQUEST_CACHE_TTL)
-    content = f"{request.client.host}:{request.headers.get('user-agent', '')}:{timestamp}"
-    return hashlib.md5(content.encode()).hexdigest()
-
-def _is_duplicate_request(request: Request, endpoint: str) -> bool:
-    """Request'in duplicate olup olmadığını kontrol eder"""
-    global _request_cache
-    
-    request_hash = _get_request_hash(request)
-    cache_key = f"{endpoint}:{request_hash}"
-    
-    current_time = time.time()
-    
-    # Cache'den eski kayıtları temizle
-    _request_cache = {k: v for k, v in _request_cache.items() 
-                     if current_time - v < _REQUEST_CACHE_TTL}
-    
-    if cache_key in _request_cache:
-        return True
-    
-    _request_cache[cache_key] = current_time
-    return False
 
 @app.get("/sessions")
 async def get_sessions(request: Request):
@@ -352,12 +329,16 @@ async def generate_chart_endpoint(request: ChartRequest) -> Dict[str, Any]:
 # Simple in-memory cache
 query_cache = {}
 
+# Request queue for sequential processing
+request_queue = deque()
+is_processing = False
+
 def get_cached_result(key: str) -> Optional[ExecuteSQLResponse]:
     """Get cached query result if it exists and is not expired"""
     if key in query_cache:
         timestamp, result = query_cache[key]
         # Cache expires after 5 minutes
-        if datetime.now().timestamp() - timestamp < 300:
+        if datetime.datetime.now().timestamp() - timestamp < 300:
             return result
         else:
             del query_cache[key]
@@ -365,7 +346,7 @@ def get_cached_result(key: str) -> Optional[ExecuteSQLResponse]:
 
 def cache_result(key: str, result: ExecuteSQLResponse) -> None:
     """Cache query result with timestamp"""
-    query_cache[key] = (datetime.now().timestamp(), result)
+    query_cache[key] = (datetime.datetime.now().timestamp(), result)
 
 class CheckAndExecuteResponse(BaseModel):
     """Response model for check-and-execute endpoint"""
@@ -373,10 +354,92 @@ class CheckAndExecuteResponse(BaseModel):
     message: str
     data: Optional[ExecuteSQLResponse] = None
 
+async def process_request_queue():
+    """Process requests in the queue sequentially"""
+    global is_processing
+    
+    while request_queue:
+        if is_processing:
+            await asyncio.sleep(0.1)
+            continue
+            
+        is_processing = True
+        try:
+            request_data = request_queue.popleft()
+            request, future = request_data
+            
+            # Process the request
+            processing_start_time = time.time()
+            logger.info(f"🔄 Starting to process query: {request.query}")
+            
+            explanation, sql_query, results, session_id, title, chart_data, chart_config = await process_natural_query_langchain(
+                request.query, 
+                request.session_id
+            )
+            
+            processing_end_time = time.time()
+            processing_duration = (processing_end_time - processing_start_time) * 1000  # Convert to milliseconds
+            logger.info(f"✅ Query processing completed in {processing_duration:.2f}ms")
+            
+            # Check if data was available
+            if not results or (len(results) == 1 and 'message' in results[0] and 'No data available' in str(results[0])):
+                response = CheckAndExecuteResponse(
+                    status="no_data",
+                    message="No data available for this query",
+                    data=None
+                )
+            else:
+                # Save to query history
+                save_query_history(
+                    session_id=session_id,
+                    natural_query=request.query,
+                    sql_query=sql_query,
+                    query_result=str(results),
+                    explanation=explanation,
+                    title=title,
+                    chart_data=chart_data,
+                    chart_config=str(chart_config),
+                    username=request.username
+                )
+                
+                # Limit the number of results returned
+                if results and len(results) > 100:
+                    results = results[:100]
+                    explanation += "\n(Note: Results limited to first 100 rows for better performance)"
+                
+                response = ExecuteSQLResponse(
+                    explanation=explanation,
+                    sql_query=sql_query,
+                    results=results,
+                    session_id=session_id,
+                    title=title,
+                    timestamp=datetime.datetime.now().isoformat(),
+                    chart_data=chart_data,
+                    chart_config=chart_config
+                )
+                
+                response = CheckAndExecuteResponse(
+                    status="success",
+                    message=f"Query executed successfully. Found {len(results)} results in {processing_duration:.2f}ms.",
+                    data=response
+                )
+            
+            # Set the result
+            future.set_result(response)
+            
+        except Exception as e:
+            logger.error(f"Error processing request: {e}")
+            if 'future' in locals():
+                future.set_exception(e)
+        finally:
+            is_processing = False
+    
+    is_processing = False
+
 @app.post("/check-and-execute", response_model=CheckAndExecuteResponse)
 async def check_and_execute(request: QueryRequest) -> CheckAndExecuteResponse:
     """Check HR data availability and execute analytics query if data exists using LangChain"""
-    logger.info(f"Checking HR data availability for query: {request.query} from user: {request.username}")
+    logger.info(f"Adding query to queue: {request.query} from user: {request.username}")
     
     # Generate session_id if not provided
     if not request.session_id:
@@ -384,180 +447,26 @@ async def check_and_execute(request: QueryRequest) -> CheckAndExecuteResponse:
         request.session_id = generate_session_id()
         logger.info(f"Generated new session_id: {request.session_id}")
     
-    # Use unified LangChain pipeline for all operations
-    explanation, sql_query, results, session_id, title, chart_data, chart_config = await process_natural_query_langchain(
-        request.query, 
-        request.session_id
-    )
+    # Create a future for this request
+    future = asyncio.Future()
     
-    # Check if data was available (handled by unified pipeline)
-    if not results or (len(results) == 1 and 'message' in results[0] and 'No data available' in str(results[0])):
+    # Add to queue
+    request_queue.append((request, future))
+    
+    # Start processing if not already running
+    if not is_processing:
+        asyncio.create_task(process_request_queue())
+    
+    # Wait for the result
+    try:
+        result = await asyncio.wait_for(future, timeout=60.0)  # 60 second timeout
+        return result
+    except asyncio.TimeoutError:
         return CheckAndExecuteResponse(
-            status="no_data",
-            message="No data available for this query",
+            status="timeout",
+            message="Request timed out",
             data=None
         )
-    
-    # USER PERMISSION CHECK - DISABLED FOR NOW
-    # logger.info(f"Validating HR analytics query permissions for user: {request.username}")
-    # permission_check = validate_user_query(request.username, sql_query)
-    
-    # if not permission_check["allowed"]:
-    #     logger.warning(f"Permission denied for user {request.username}: {permission_check['error']}")
-    #     return CheckAndExecuteResponse(
-    #         status="permission_denied",
-    #         message=f"Permission denied: {permission_check['error']}",
-    #         data=None
-    #     )
-    
-    # # Eğer query modify edildiyse, yeni SQL'i kullan
-    # if permission_check["modified_query"] and permission_check["modified_query"] != sql_query:
-    #     logger.info(f"HR analytics query modified for user {request.username} due to permissions")
-    #     logger.info(f"Original: {sql_query}")
-    #     logger.info(f"Modified: {permission_check['modified_query']}")
-    #     sql_query = permission_check["modified_query"]
-        
-    #     # Modified query ile tekrar execute et
-    #     try:
-    #         results = execute_sql_query(sql_query)
-    #         logger.info(f"Modified HR analytics query executed successfully, returned {len(results)} results")
-    #     except Exception as e:
-    #         logger.error(f"Modified query execution failed: {e}")
-    #         return CheckAndExecuteResponse(
-    #                 status="error",
-    #                 message=f"Modified query execution failed: {str(e)}",
-    #                 data=None
-    #             )
-    
-    # # Chart yetkisi kontrolü
-    # if chart_config and not user_manager.can_create_chart(request.username):
-    #     logger.info(f"HR analytics chart creation disabled for user {request.username}")
-    #     chart_config = None
-    #     chart_data = None
-    
-    # Save query to history with user info
-    save_query_history(
-        session_id=session_id,
-        natural_query=request.query,
-        sql_query=sql_query,
-        query_result=str(results),
-        explanation=explanation,
-        title=title,
-        chart_data=chart_data,
-        chart_config=str(chart_config),
-        username=request.username  # Kullanıcı bilgisini de kaydet
-    )
-    
-    response = ExecuteSQLResponse(
-        explanation=explanation,
-        sql_query=sql_query,
-        results=results,
-        session_id=session_id,
-        title=title,
-        chart_data=chart_data,
-        chart_config=chart_config
-    )
-    
-    return CheckAndExecuteResponse(
-        status="success",
-        message=f"HR analytics query executed successfully with LangChain for user {request.username}",
-        data=response
-    )
-
-# @app.get("/user-permissions/{username}")
-# async def get_user_permissions_endpoint(username: str):
-#     """Get user permissions and role information"""
-#     logger.info(f"Getting HR analytics permissions for user: {username}")
-#     permissions = get_user_permissions(username)
-    
-#     if "error" in permissions:
-#         raise HTTPException(status_code=404, detail=permissions["error"])
-    
-#     return {
-#         "username": username,
-#         "permissions": permissions
-#     }
-
-# @app.get("/users")
-# async def list_users():
-#     """List all demo users with their roles"""
-#     logger.info("Listing all demo users")
-    
-#     users = []
-#     for username in ["demo_viewer", "demo_analyst", "demo_admin"]:
-#         permissions = get_user_permissions(username)
-#         if "error" not in permissions:
-#             users.append(permissions)
-    
-#     return {
-#         "users": users,
-#         "total": len(users)
-#     }
-
-
-
-# Cache Management Endpoints
-# @app.get("/cache/stats")
-# async def get_cache_stats():
-#     """Get cache statistics and performance metrics"""
-#     try:
-#         stats = cache_manager.get_cache_stats()
-#         recommendations = cache_manager.get_cache_recommendations()
-        
-#         return {
-#             "status": "success",
-#             "cache_stats": stats,
-#             "recommendations": recommendations,
-#             "timestamp": datetime.now().isoformat()
-#         }
-#     except Exception as e:
-#         logger.error(f"Error getting cache stats: {e}")
-#         raise HTTPException(status_code=500, detail=f"Error retrieving cache statistics: {str(e)}")
-
-# @app.get("/cache/popular")
-# async def get_popular_queries(limit: int = 10):
-#     """Get most frequently accessed cached queries"""
-#     try:
-#         if limit > 50:  # Limit to prevent abuse
-#             limit = 50
-        
-#         popular_queries = cache_manager.get_popular_queries(limit)
-        
-#         return {
-#             "status": "success",
-#             "limit": limit,
-#             "popular_queries": popular_queries,
-#             "timestamp": datetime.now().isoformat()
-#         }
-#     except Exception as e:
-#         logger.error(f"Error getting popular queries: {e}")
-#         raise HTTPException(status_code=500, detail=f"Error retrieving popular queries: {str(e)}")
-
-# @app.post("/cache/clear")
-# async def clear_cache(clear_type: str = "expired"):
-#     """Clear cache entries (admin only)"""
-#     try:
-#         if clear_type == "expired":
-#             cache_manager.clear_expired_cache()
-#             message = "Expired cache entries cleared successfully"
-#         elif clear_type == "all":
-#             cache_manager.clear_all_cache()
-#             message = "All cache entries cleared successfully"
-#         else:
-#             raise HTTPException(status_code=400, detail="Invalid clear_type. Use 'expired' or 'all'")
-        
-#         return {
-#             "status": "success",
-#             "message": message,
-#             "clear_type": clear_type,
-#             "timestamp": datetime.now().isoformat()
-#         }
-#     except HTTPException:
-#         raise
-#     except Exception as e:
-#         logger.error(f"Error clearing cache: {e}")
-#         raise HTTPException(status_code=500, detail=f"Error clearing cache: {str(e)}")
-
 
 
 if __name__ == "__main__":

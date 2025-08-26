@@ -75,6 +75,13 @@ interface QueryResult {
   chart_generating?: boolean
 }
 
+interface ChatStep {
+  type: 'explanation' | 'sql' | 'results' | 'chart'
+  content: any
+  status: 'loading' | 'complete' | 'error'
+  timestamp: Date
+}
+
 interface HistoryItem {
   id: string
   queries: QueryResult[]
@@ -94,9 +101,21 @@ function App() {
   const { isOpen, onOpen, onClose } = useDisclosure()
   const toast = useToast()
   
+  // Live streaming chat states
+  const [chatSteps, setChatSteps] = useState<ChatStep[]>([])
+  const [isStreaming, setIsStreaming] = useState(false)
+  const [currentStep, setCurrentStep] = useState<ChatStep | null>(null)
+  
   // Responsive sidebar state
   const isDesktop = useBreakpointValue({ base: false, lg: true });
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
+  
+  // Debug: Monitor result state changes
+  useEffect(() => {
+    console.log('Result state changed:', result);
+    console.log('Chart data in result:', result?.chart_data);
+    console.log('Chart config in result:', result?.chart_config);
+  }, [result]);
   
   // Duplicate API çağrılarını önlemek için useRef ve debouncing
   const isFetching = useRef(false);
@@ -156,25 +175,41 @@ function App() {
     return () => clearInterval(interval)
   }, [])
 
-  const handleSubmit = async () => {
-    if (!query.trim()) {
-      toast({
-        title: 'Error',
-        description: 'Please enter a query',
-        status: 'error',
-        duration: 3000,
-        isClosable: true,
-      })
-      return
+  const handleSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    
+    if (!query.trim()) return;
+    
+    // Prevent duplicate API calls
+    if (isFetching.current) {
+      console.log('Request already in progress, skipping...');
+      return;
     }
-
-    setLoading(true)
+    
+    const startTime = Date.now();
+    console.log(`🚀 Starting query: "${query.trim()}" at ${new Date().toISOString()}`);
+    
+    setIsStreaming(true);
+    setLoading(true); // Add loading state
+    // Clear previous chat steps and stop any ongoing typing
+    setChatSteps([]);
+    setResult(null);
+    setActiveTab(0);
+    
     try {
-      // Direkt API_URL kullan
+      isFetching.current = true;
+      
+      const apiStartTime = Date.now();
+      console.log('📡 API call starting...');
+      
       const response = await axios.post(`${API_URL}/check-and-execute`, {
         query: query.trim(),
         session_id: result?.session_id
       });
+      
+      const apiEndTime = Date.now();
+      const apiDuration = apiEndTime - apiStartTime;
+      console.log(`✅ API response received in ${apiDuration}ms`);
       console.log('Backend response:', response.data)
       
       // Yanıt no_data durumundaysa
@@ -186,7 +221,7 @@ function App() {
           duration: 5000,
           isClosable: true,
         });
-        setLoading(false);
+        setIsStreaming(false);
         return;
       }
       
@@ -196,6 +231,8 @@ function App() {
       console.log('Result data:', resultData);
       console.log('Result data type:', typeof resultData);
       console.log('Result data keys:', resultData ? Object.keys(resultData) : 'No data');
+      console.log('Chart data from backend:', resultData?.chart_data);
+      console.log('Chart config from backend:', resultData?.chart_config);
       
       // Ensure all required fields are present
       const processedResult = {
@@ -211,16 +248,32 @@ function App() {
       };
       
       console.log('Processed result:', processedResult);
+      console.log('Processed chart_data:', processedResult.chart_data);
+      console.log('Processed chart_config:', processedResult.chart_config);
       
       setResult(processedResult);
+      console.log('Result state set to:', processedResult);
+      console.log('Result state after set:', result); // This will show old value due to React state updates
       setQuery('');
+
+      // Update chat steps with live streaming effect
+      const streamingStartTime = Date.now();
+      console.log('🎬 Starting chat streaming...');
+      await streamChatSteps(processedResult);
+      const streamingEndTime = Date.now();
+      const streamingDuration = streamingEndTime - streamingStartTime;
+      console.log(`🎭 Chat streaming completed in ${streamingDuration}ms`);
+
+      const totalTime = Date.now() - startTime;
+      console.log(`🎉 Total query execution time: ${totalTime}ms`);
+      console.log(`📊 Breakdown: API: ${apiDuration}ms, Streaming: ${streamingDuration}ms, Total: ${totalTime}ms`);
       
       // Show success message
       toast({
         title: 'Query Executed Successfully',
-        description: `Found ${processedResult.results.length} results`,
+        description: `Found ${processedResult.results.length} results in ${totalTime}ms (API: ${apiDuration}ms, UI: ${streamingDuration}ms)`,
         status: 'success',
-        duration: 3000,
+        duration: 5000,
         isClosable: true,
       });
       
@@ -234,9 +287,62 @@ function App() {
         isClosable: true,
       })
     } finally {
-      setLoading(false)
+      setIsStreaming(false);
+      setLoading(false); // Reset loading state
+      isFetching.current = false;
     }
   }
+
+  const streamChatSteps = async (queryResult: QueryResult) => {
+    // Clear any existing steps
+    setChatSteps([])
+    
+    // Add explanation step immediately
+    setChatSteps(prev => [...prev, {
+      type: 'explanation',
+      content: queryResult.explanation,
+      status: 'complete',
+      timestamp: new Date()
+    }])
+
+    // Wait a bit for smooth transition
+    await new Promise(resolve => setTimeout(resolve, 400))
+
+    // Add SQL step
+    setChatSteps(prev => [...prev, {
+      type: 'sql',
+      content: queryResult.sql_query,
+      status: 'complete',
+      timestamp: new Date()
+    }])
+
+    await new Promise(resolve => setTimeout(resolve, 400))
+
+    // Add results step
+    setChatSteps(prev => [...prev, {
+      type: 'results',
+      content: queryResult.results,
+      status: 'complete',
+      timestamp: new Date()
+    }])
+
+    await new Promise(resolve => setTimeout(resolve, 400))
+
+    // Add chart step if available
+    if (queryResult.chart_data && queryResult.chart_data !== 'undefined') {
+      setChatSteps(prev => [...prev, {
+        type: 'chart',
+        content: { 
+          chart_data: queryResult.chart_data, 
+          chart_config: queryResult.chart_config 
+        },
+        status: 'complete',
+        timestamp: new Date()
+      }])
+    }
+  }
+
+
 
   const generateChart = useCallback(async () => {
     if (!result) return;
@@ -245,24 +351,25 @@ function App() {
     setResult(prev => prev ? { ...prev, chart_generating: true } : null);
     
     try {
-      const response = await axios.post(`${API_URL}/chart`, {
+      // Re-run the query to get fresh chart data
+      const response = await axios.post(`${API_URL}/check-and-execute`, {
         query: result.natural_query,
-        chart_type: result.chart_config?.chart_type || 'auto',
-        x_column: result.chart_config?.x_column,
-        y_column: result.chart_config?.y_column
+        username: "user",
+        session_id: result.session_id
       });
       
-      if (response.data.success) {
+      if (response.data.status === "success" && response.data.data) {
+        const newResult = response.data.data;
         setResult(prev => prev ? {
           ...prev,
-          chart_data: response.data.chart_data,
-          chart_config: response.data.chart_config,
+          chart_data: newResult.chart_data,
+          chart_config: newResult.chart_config,
           chart_generating: false
         } : null);
         
         toast({
           title: "Chart Generated",
-          description: response.data.message,
+          description: "Chart generated successfully",
           status: "success",
           duration: 3000,
           isClosable: true,
@@ -271,7 +378,7 @@ function App() {
         setResult(prev => prev ? { ...prev, chart_generating: false } : null);
         toast({
           title: "Chart Generation Failed",
-          description: response.data.message,
+          description: response.data.message || "Failed to generate chart",
           status: "error",
           duration: 3000,
           isClosable: true,
@@ -338,7 +445,13 @@ function App() {
   };
 
   const renderChart = () => {
+    console.log('renderChart called with result:', result);
+    console.log('chart_data:', result?.chart_data);
+    console.log('chart_data type:', typeof result?.chart_data);
+    console.log('chart_data starts with data:image/:', result?.chart_data?.startsWith('data:image/'));
+    
     if (!result?.chart_data) {
+      console.log('No chart_data available');
       return (
         <Box textAlign="center" py={8}>
           <Text color="gray.500" mb={4}>No chart available for this data</Text>
@@ -357,6 +470,7 @@ function App() {
 
     // Check if it's a base64 image or JSON data
     if (result.chart_data.startsWith('data:image/')) {
+      console.log('Rendering PNG image chart');
       // PNG image chart
       return (
         <Box>
@@ -401,6 +515,7 @@ function App() {
         </Box>
       );
     } else {
+      console.log('Rendering JSON data chart');
       // JSON data (HTML fallback)
       try {
         const chartInfo = JSON.parse(result.chart_data);
@@ -787,7 +902,7 @@ function App() {
                   </HStack>
                 </Box>
                 
-                <HStack spacing={4}>
+                <HStack spacing={4} as="form" onSubmit={handleSubmit}>
                   <Input
                     placeholder="e.g., Show me employee count by department, Find average salary by position, Analyze engagement scores..."
                     value={query}
@@ -801,17 +916,20 @@ function App() {
                       boxShadow: "0 0 0 3px rgba(66, 153, 225, 0.1)"
                     }}
                     _hover={{ borderColor: "gray.300" }}
-                    onKeyPress={(e) => e.key === 'Enter' && handleSubmit()}
+                    onKeyPress={(e) => e.key === 'Enter' && handleSubmit(e)}
                   />
                   <Button
+                    type="submit"
                     colorScheme="blue"
                     size="lg"
                     px={8}
+                    py={6}
+                    fontSize="lg"
+                    fontWeight="bold"
                     borderRadius="xl"
-                    onClick={handleSubmit}
+                    boxShadow="0 4px 20px rgba(102, 126, 234, 0.3)"
                     isLoading={loading}
-                    loadingText="Analyzing..."
-                    bg="linear-gradient(135deg, #667eea 0%, #764ba2 100%)"
+                    loadingText="Executing..."
                     _hover={{
                       transform: "translateY(-2px)",
                       boxShadow: "0 8px 25px rgba(102, 126, 234, 0.4)"
@@ -846,6 +964,179 @@ function App() {
                   </Text>
                 </VStack>
               </VStack>
+            </Box>
+          )}
+
+          {/* Live Streaming Chat Steps */}
+          {isStreaming && chatSteps.length > 0 && (
+            <Box
+              bg="white"
+              borderRadius="2xl"
+              overflow="hidden"
+              boxShadow="0 4px 20px rgba(0, 0, 0, 0.08)"
+              border="1px"
+              borderColor="gray.100"
+              mb={6}
+            >
+              <Box 
+                bg="blue.50" 
+                px={8} 
+                py={6} 
+                borderBottom="1px" 
+                borderColor="blue.200"
+              >
+                <HStack spacing={3} align="center">
+                  <Spinner size="sm" color="blue.500" />
+                  <Text fontSize="lg" fontWeight="bold" color="blue.800">
+                    AI Analizi Canlı Olarak Oluşturuluyor...
+                  </Text>
+                </HStack>
+              </Box>
+              
+              <Box p={8}>
+                <VStack spacing={6} align="stretch">
+                  {chatSteps.map((step, index) => (
+                    <Box
+                      key={index}
+                      p={6}
+                      bg={step.status === 'loading' ? 'gray.50' : 'white'}
+                      borderRadius="xl"
+                      border="1px"
+                      borderColor={step.status === 'loading' ? 'gray.200' : 'blue.200'}
+                      transition="all 0.3s ease"
+                      _hover={{ transform: 'translateY(-2px)', boxShadow: '0 4px 20px rgba(0, 0, 0, 0.1)' }}
+                    >
+                      <HStack justify="space-between" mb={4}>
+                        <Badge 
+                          colorScheme={step.status === 'loading' ? 'gray' : 'blue'} 
+                          fontSize="sm" 
+                          borderRadius="full" 
+                          px={3} 
+                          py={1}
+                        >
+                          {step.type === 'explanation' && 'AI Açıklaması'}
+                          {step.type === 'sql' && 'SQL Sorgusu'}
+                          {step.type === 'results' && 'Veri Sonuçları'}
+                          {step.type === 'chart' && 'Görselleştirme'}
+                        </Badge>
+                        {step.status === 'loading' && (
+                          <Spinner size="sm" color="blue.500" />
+                        )}
+                        {step.status === 'complete' && (
+                          <Icon as={CheckIcon} color="green.500" />
+                        )}
+                      </HStack>
+                      
+                      {step.type === 'explanation' && (
+                        <Box>
+                          <Text fontSize="lg" fontWeight="semibold" color="gray.800" mb={3}>
+                            AI Analizi
+                          </Text>
+                          <Box
+                            bg="blue.50"
+                            p={4}
+                            borderRadius="lg"
+                            border="1px"
+                            borderColor="blue.200"
+                          >
+                            <Text color="gray.700">
+                              {step.content}
+                            </Text>
+                          </Box>
+                        </Box>
+                      )}
+                      
+                      {step.type === 'sql' && (
+                        <Box>
+                          <Text fontSize="lg" fontWeight="semibold" color="gray.800" mb={3}>
+                            SQL Sorgusu
+                          </Text>
+                          <Box
+                            bg="gray.900"
+                            p={4}
+                            borderRadius="lg"
+                            overflow="auto"
+                          >
+                            <Code color="green.400" fontSize="sm">
+                              {step.content}
+                            </Code>
+                          </Box>
+                        </Box>
+                      )}
+                      
+                      {step.type === 'results' && (
+                        <Box>
+                          <Text fontSize="lg" fontWeight="semibold" color="gray.800" mb={3}>
+                            Veri Sonuçları ({step.content.length} satır)
+                          </Text>
+                          <Box
+                            bg="gray.50"
+                            p={4}
+                            borderRadius="lg"
+                            border="1px"
+                            borderColor="gray.200"
+                            maxH="300px"
+                            overflow="auto"
+                          >
+                            <Table variant="simple" size="sm">
+                              <Thead>
+                                <Tr>
+                                  {Object.keys(step.content[0] || {}).map(key => (
+                                    <Th key={key}>{key}</Th>
+                                  ))}
+                                </Tr>
+                              </Thead>
+                              <Tbody>
+                                {step.content.slice(0, 10).map((row: any, idx: number) => (
+                                  <Tr key={idx}>
+                                    {Object.values(row).map((value: any, valIdx: number) => (
+                                      <Td key={valIdx}>{String(value)}</Td>
+                                    ))}
+                                  </Tr>
+                                ))}
+                              </Tbody>
+                            </Table>
+                            {step.content.length > 10 && (
+                              <Text fontSize="sm" color="gray.600" mt={2} textAlign="center">
+                                ... ve {step.content.length - 10} satır daha
+                              </Text>
+                            )}
+                          </Box>
+                        </Box>
+                      )}
+                      
+                      {step.type === 'chart' && (
+                        <Box>
+                          <Text fontSize="lg" fontWeight="semibold" color="gray.800" mb={3}>
+                            Görselleştirme
+                          </Text>
+                          <Box
+                            bg="white"
+                            p={4}
+                            borderRadius="lg"
+                            border="1px"
+                            borderColor="gray.200"
+                          >
+                            {step.content.chart_data && step.content.chart_data.startsWith('data:image/') ? (
+                              <Image 
+                                src={step.content.chart_data} 
+                                alt="Data Chart"
+                                w="full"
+                                h="auto"
+                                borderRadius="md"
+                              />
+                            ) : step.content.chart_data ? (
+                              <Text color="gray.600">Chart formatında görüntülenemiyor</Text>
+                            ) : (
+                              <Text color="gray.600">Chart henüz oluşturulmadı</Text>
+                            )}
+                          </Box>
+                        </Box>
+                      )}
+                    </Box>
+                  ))}
+                </VStack>
+              </Box>
             </Box>
           )}
 
