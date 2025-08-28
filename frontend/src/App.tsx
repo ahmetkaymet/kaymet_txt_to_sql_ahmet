@@ -652,26 +652,13 @@ function App() {
         <Container maxW="7xl">
           <HStack justify="space-between" align="center">
             <HStack spacing={3}>
-              <Box
-                w={8}
-                h={8}
-                bg="linear-gradient(135deg, #667eea 0%, #764ba2 100%)"
-                borderRadius="full"
-                display="flex"
-                alignItems="center"
-                justifyContent="center"
-                boxShadow="0 4px 12px rgba(102, 126, 234, 0.4)"
-              >
-                <Text color="white" fontWeight="bold" fontSize="sm">AI</Text>
-              </Box>
-              <VStack spacing={0} align="start">
-                <Heading size="lg" bg="linear-gradient(135deg, #667eea 0%, #764ba2 100%)" bgClip="text" fontWeight="bold">
-                  AImet
-                </Heading>
-                <Text fontSize="sm" color="gray.600" fontWeight="medium">
-                  AI-Powered Data Analytics
-                </Text>
-              </VStack>
+              <Image
+                src="/assets/BilişimAI logo.JPG"
+                alt="BilişimAI Logo"
+                w={48}
+                h={24}
+          
+              />
             </HStack>
             
             <HStack spacing={4}>
@@ -691,7 +678,7 @@ function App() {
               <Button
                 size="sm"
                 variant="ghost"
-                colorScheme="blue"
+                colorScheme="gray"
                   onClick={() => setSidebarCollapsed(!sidebarCollapsed)}
                 leftIcon={<Icon as={ViewIcon} />}
               >
@@ -699,20 +686,7 @@ function App() {
                 </Button>
               )}
               
-              <Button
-                size="sm"
-                variant="ghost"
-                colorScheme="green"
-                onClick={() => {
-                  console.log('Current history:', history);
-                  if (history.length > 0 && history[0].queries.length > 0) {
-                    console.log('Testing loadQueryFromHistory with:', history[0].queries[0]);
-                    loadQueryFromHistory(history[0].queries[0]);
-                  }
-                }}
-              >
-                Test Load
-              </Button>
+
             </HStack>
           </HStack>
         </Container>
@@ -723,13 +697,14 @@ function App() {
         {/* Desktop Sidebar */}
         {isDesktop && (
           <Box
-            w={sidebarCollapsed ? "60px" : "350px"}
+            w={sidebarCollapsed ? "60px" : "320px"}
             bg="white"
             borderRight="1px"
             borderColor="gray.200"
             transition="width 0.3s ease"
             overflow="hidden"
             position="relative"
+            boxShadow="2px 0 10px rgba(0, 0, 0, 0.1)"
           >
             {sidebarCollapsed ? (
               // Collapsed sidebar
@@ -740,7 +715,7 @@ function App() {
                   onClick={() => setSidebarCollapsed(false)}
                   variant="ghost"
                   size="sm"
-                  colorScheme="blue"
+                  colorScheme="gray"
                 />
               </VStack>
             ) : (
@@ -756,7 +731,7 @@ function App() {
                 >
                   <HStack justify="space-between" align="center">
                     <Text fontSize="lg" fontWeight="semibold" color="gray.800">
-                      Query History
+                      Chat History
                     </Text>
                     <IconButton
                       aria-label="Collapse sidebar"
@@ -764,7 +739,7 @@ function App() {
                       onClick={() => setSidebarCollapsed(true)}
                       variant="ghost"
                       size="sm"
-                      colorScheme="blue"
+                      colorScheme="gray"
                     />
                   </HStack>
                 </Box>
@@ -773,40 +748,40 @@ function App() {
                 <Box flex={1} overflowY="auto" p={4}>
                   {loadingHistory ? (
                     <VStack spacing={4} py={8}>
-                      <Spinner size="md" color="blue.500" />
+                      <Spinner size="md" color="red.500" />
                       <Text fontSize="sm" color="gray.600">Loading history...</Text>
                     </VStack>
                   ) : history.length > 0 ? (
-                    <VStack spacing={3} align="stretch">
+                    <VStack spacing={2} align="stretch">
                       {history.flatMap(session => 
                         session.queries.map((item, index) => (
                           <Box
                             key={`${session.id}-${index}`}
-                            p={3}
-                            bg={result?.session_id === item.session_id ? 'blue.50' : 'gray.50'}
-                            borderRadius="lg"
+                            p={4}
+                            bg={result?.session_id === item.session_id ? 'red.50' : 'white'}
+                            borderRadius="xl"
                             cursor="pointer"
                             onClick={() => {
                               console.log('History item clicked:', item);
                               loadQueryFromHistory(item);
                             }}
                             _hover={{ 
-                              bg: result?.session_id === item.session_id ? 'blue.100' : 'gray.100',
+                              bg: result?.session_id === item.session_id ? 'red.100' : 'gray.50',
                               transform: 'translateY(-1px)',
-                              boxShadow: '0 2px 8px rgba(0, 0, 0, 0.1)'
+                              boxShadow: '0 4px 12px rgba(0, 0, 0, 0.1)'
                             }}
                             transition="all 0.2s"
                             border="1px"
-                            borderColor={result?.session_id === item.session_id ? 'blue.200' : 'gray.200'}
+                            borderColor={result?.session_id === item.session_id ? 'red.200' : 'gray.200'}
                           >
-                            <VStack spacing={2} align="start">
+                            <VStack spacing={3} align="start">
                               <Text fontSize="sm" fontWeight="medium" color="gray.800" noOfLines={2}>
                                 {item.natural_query}
                               </Text>
                               <HStack spacing={2} justify="space-between" w="full">
-                                <Badge colorScheme="blue" fontSize="xs" borderRadius="full" px={2} py={1}>
+                                <Text fontSize="xs" color="gray.500">
                                   {new Date(item.timestamp).toLocaleDateString()}
-                                </Badge>
+                                </Text>
                                 {item.chart_data && (
                                   <Badge colorScheme="green" fontSize="xs" borderRadius="full" px={2} py={1}>
                                     Chart
@@ -835,118 +810,9 @@ function App() {
         )}
 
         {/* Main Content Area */}
-        <Box flex={1} overflowY="auto">
+        <Box flex={1} overflowY="auto" pb="100px">
           <Container maxW="6xl" py={8}>
         <VStack spacing={8} align="stretch">
-          {/* Query Input Section */}
-          <Box
-            bg="white"
-            borderRadius="2xl"
-            p={8}
-            boxShadow="0 4px 20px rgba(0, 0, 0, 0.08)"
-            border="1px"
-            borderColor="gray.100"
-          >
-              <VStack spacing={6} align="stretch">
-                <VStack spacing={2} align="start">
-                  <Text fontSize="lg" fontWeight="semibold" color="gray.800">
-                    Ask me anything about your HR data
-                  </Text>
-                  <Text fontSize="sm" color="gray.600">
-                    Describe what you want to know about your HR data in natural language
-                  </Text>
-                </VStack>
-                
-                {/* HR Quick Query Examples */}
-                <Box>
-                  <Text fontSize="sm" fontWeight="medium" color="gray.700" mb={3}>
-                    Quick HR Analytics:
-                  </Text>
-                  <HStack spacing={2} wrap="wrap">
-                    <Button
-                      size="sm"
-                      variant="outline"
-                      colorScheme="blue"
-                      onClick={() => setQuery("Show me employee count by department")}
-                    >
-                      Employee Count by Dept
-                    </Button>
-                    <Button
-                      size="sm"
-                      variant="outline"
-                      colorScheme="green"
-                      onClick={() => setQuery("What is the average salary by position?")}
-                    >
-                      Salary by Position
-                    </Button>
-                    <Button
-                      size="sm"
-                      variant="outline"
-                      colorScheme="purple"
-                      onClick={() => setQuery("Analyze employee engagement scores by department")}
-                    >
-                      Engagement Analysis
-                    </Button>
-                    <Button
-                      size="sm"
-                      variant="outline"
-                      colorScheme="orange"
-                      onClick={() => setQuery("Show me training completion rates")}
-                    >
-                      Training Metrics
-                    </Button>
-                    <Button
-                      size="sm"
-                      variant="outline"
-                      colorScheme="teal"
-                      onClick={() => setQuery("What is the employee turnover rate by department?")}
-                    >
-                      Turnover Analysis
-                    </Button>
-                  </HStack>
-                </Box>
-                
-                <HStack spacing={4} as="form" onSubmit={handleSubmit}>
-                  <Input
-                    placeholder="e.g., Show me employee count by department, Find average salary by position, Analyze engagement scores..."
-                    value={query}
-                    onChange={(e) => setQuery(e.target.value)}
-                    size="lg"
-                    borderRadius="xl"
-                    border="2px"
-                    borderColor="gray.200"
-                    _focus={{
-                      borderColor: "blue.400",
-                      boxShadow: "0 0 0 3px rgba(66, 153, 225, 0.1)"
-                    }}
-                    _hover={{ borderColor: "gray.300" }}
-                    onKeyPress={(e) => e.key === 'Enter' && handleSubmit(e)}
-                  />
-                  <Button
-                    type="submit"
-                    colorScheme="blue"
-                    size="lg"
-                    px={8}
-                    py={6}
-                    fontSize="lg"
-                    fontWeight="bold"
-                    borderRadius="xl"
-                    boxShadow="0 4px 20px rgba(102, 126, 234, 0.3)"
-                    isLoading={loading}
-                    loadingText="Executing..."
-                    _hover={{
-                      transform: "translateY(-2px)",
-                      boxShadow: "0 8px 25px rgba(102, 126, 234, 0.4)"
-                    }}
-                    transition="all 0.2s"
-                  >
-                    Execute
-                  </Button>
-                  
-
-                </HStack>
-              </VStack>
-          </Box>
 
           {/* Error Display */}
           {error && (
@@ -968,6 +834,39 @@ function App() {
             </Box>
           )}
 
+          {/* AImet Welcome Message - Only show when no results */}
+          {!result && !loading && (
+            <Box
+              bg="white"
+              borderRadius="2xl"
+              p={8}
+              textAlign="center"
+              boxShadow="0 4px 20px rgba(0, 0, 0, 0.08)"
+              border="1px"
+              borderColor="gray.100"
+              maxW="2xl"
+              mx="auto"
+            >
+              <VStack spacing={6}>
+                <Image
+                  src="/assets/247b5df2eca666f9b7fc7d57907d4bd041dea7afba62f9f0f8b22e8e9e285702.png"
+                  alt="AImet Mascot"
+                  w={32}
+                  h={32}
+                  mx="auto"
+                />
+                <VStack spacing={3}>
+                  <Heading size="lg" color="red.800" fontWeight="bold">
+                    Hey, I'm AImet! 🤖
+                  </Heading>
+                  <Text fontSize="md" color="gray.600">
+                    How can I help you today? Ask me anything about your HR data and I'll analyze it for you.
+                  </Text>
+                </VStack>
+              </VStack>
+            </Box>
+          )}
+
           {/* Loading State */}
           {loading && (
             <Box
@@ -980,7 +879,7 @@ function App() {
               borderColor="gray.100"
             >
               <VStack spacing={6}>
-                <Spinner size="xl" color="blue.500" thickness="4px" />
+                <Spinner size="xl" color="red.500" thickness="4px" />
                 <VStack spacing={2}>
                   <Text fontSize="xl" fontWeight="semibold" color="gray.800">
                     Analyzing your query with AI
@@ -998,173 +897,129 @@ function App() {
           {/* Live Streaming Chat Steps */}
           {isStreaming && chatSteps.length > 0 && (
             <Box
-              bg="white"
-              borderRadius="2xl"
-              overflow="hidden"
-              boxShadow="0 4px 20px rgba(0, 0, 0, 0.08)"
-              border="1px"
-              borderColor="gray.100"
+              bg="transparent"
               mb={6}
+              px={4}
             >
-              <Box 
-                bg="blue.50" 
-                px={8} 
-                py={6} 
-                borderBottom="1px" 
-                borderColor="blue.200"
-              >
-                <HStack spacing={3} align="center">
-                  <Spinner size="sm" color="blue.500" />
-                  <Text fontSize="lg" fontWeight="bold" color="blue.800">
-                    AI Analizi Canlı Olarak Oluşturuluyor...
-                  </Text>
-                </HStack>
-              </Box>
-              
-              <Box p={8}>
-                <VStack spacing={6} align="stretch">
-                  {chatSteps.map((step, index) => (
-                    <Box
-                      key={index}
-                      p={6}
-                      bg={step.status === 'loading' ? 'gray.50' : 'white'}
-                      borderRadius="xl"
-                      border="1px"
-                      borderColor={step.status === 'loading' ? 'gray.200' : 'blue.200'}
-                      transition="all 0.3s ease"
-                      _hover={{ transform: 'translateY(-2px)', boxShadow: '0 4px 20px rgba(0, 0, 0, 0.1)' }}
-                    >
-                      <HStack justify="space-between" mb={4}>
-                        <Badge 
-                          colorScheme={step.status === 'loading' ? 'gray' : 'blue'} 
-                          fontSize="sm" 
-                          borderRadius="full" 
-                          px={3} 
-                          py={1}
+              <VStack spacing={4} align="stretch">
+                {chatSteps.map((step, index) => (
+                  <Box
+                    key={index}
+                    alignSelf="flex-start"
+                    maxW="75%"
+                    bg="white"
+                    p={4}
+                    borderRadius="2xl"
+                    border="1px"
+                    borderColor="gray.200"
+                    boxShadow="0 2px 8px rgba(0, 0, 0, 0.08)"
+                    transition="all 0.2s ease"
+                    _hover={{ transform: 'translateY(-1px)', boxShadow: '0 4px 12px rgba(0, 0, 0, 0.12)' }}
+                  >
+                    <HStack spacing={3} mb={3} align="center">
+                      <Image
+                        src="/assets/247b5df2eca666f9b7fc7d57907d4bd041dea7afba62f9f0f8b22e8e9e285702.png"
+                        alt="AImet Mascot"
+                        w={6}
+                        h={6}
+                        borderRadius="full"
+                        objectFit="cover"
+                        flexShrink={0}
+                      />
+                                              <Text fontSize="sm" fontWeight="medium" color="gray.700" textTransform="uppercase" letterSpacing="wide">
+                          {step.type === 'explanation' && 'Analysis'}
+                          {step.type === 'sql' && 'SQL Query'}
+                          {step.type === 'results' && 'Data'}
+                          {step.type === 'chart' && 'Chart'}
+                        </Text>
+                      {step.status === 'loading' && (
+                        <Spinner size="sm" color="red.500" />
+                      )}
+                      {step.status === 'complete' && (
+                        <Icon as={CheckIcon} color="green.500" boxSize={4} />
+                      )}
+                    </HStack>
+                    
+                    {step.type === 'explanation' && (
+                      <Text color="gray.700" fontSize="md" lineHeight="1.5">
+                        {step.content}
+                      </Text>
+                    )}
+                    
+                    {step.type === 'sql' && (
+                      <Box
+                        bg="gray.50"
+                        p={3}
+                        borderRadius="lg"
+                        border="1px"
+                        borderColor="gray.200"
+                        overflow="auto"
+                        maxW="100%"
+                      >
+                        <Code color="gray.800" fontSize="xs" whiteSpace="pre-wrap" bg="transparent">
+                          {step.content}
+                        </Code>
+                      </Box>
+                    )}
+                    
+                    {step.type === 'results' && (
+                      <Box>
+                        <Text fontSize="sm" color="gray.600" mb={3}>
+                          {step.content.length} rows returned
+                        </Text>
+                        <Box
+                          bg="gray.50"
+                          p={3}
+                          borderRadius="lg"
+                          border="1px"
+                          borderColor="gray.200"
+                          maxH="200px"
+                          overflow="auto"
                         >
-                          {step.type === 'explanation' && 'AI Açıklaması'}
-                          {step.type === 'sql' && 'SQL Sorgusu'}
-                          {step.type === 'results' && 'Veri Sonuçları'}
-                          {step.type === 'chart' && 'Görselleştirme'}
-                        </Badge>
-                        {step.status === 'loading' && (
-                          <Spinner size="sm" color="blue.500" />
-                        )}
-                        {step.status === 'complete' && (
-                          <Icon as={CheckIcon} color="green.500" />
-                        )}
-                      </HStack>
-                      
-                      {step.type === 'explanation' && (
-                        <Box>
-                          <Text fontSize="lg" fontWeight="semibold" color="gray.800" mb={3}>
-                            AI Analizi
-                          </Text>
-                          <Box
-                            bg="blue.50"
-                            p={4}
-                            borderRadius="lg"
-                            border="1px"
-                            borderColor="blue.200"
-                          >
-                            <Text color="gray.700">
-                              {step.content}
-                            </Text>
-                          </Box>
-                        </Box>
-                      )}
-                      
-                      {step.type === 'sql' && (
-                        <Box>
-                          <Text fontSize="lg" fontWeight="semibold" color="gray.800" mb={3}>
-                            SQL Sorgusu
-                          </Text>
-                          <Box
-                            bg="gray.900"
-                            p={4}
-                            borderRadius="lg"
-                            overflow="auto"
-                          >
-                            <Code color="green.400" fontSize="sm">
-                              {step.content}
-                            </Code>
-                          </Box>
-                        </Box>
-                      )}
-                      
-                      {step.type === 'results' && (
-                        <Box>
-                          <Text fontSize="lg" fontWeight="semibold" color="gray.800" mb={3}>
-                            Veri Sonuçları ({step.content.length} satır)
-                          </Text>
-                          <Box
-                            bg="gray.50"
-                            p={4}
-                            borderRadius="lg"
-                            border="1px"
-                            borderColor="gray.200"
-                            maxH="300px"
-                            overflow="auto"
-                          >
-                            <Table variant="simple" size="sm">
-                              <Thead>
-                                <Tr>
-                                  {Object.keys(step.content[0] || {}).map(key => (
-                                    <Th key={key}>{key}</Th>
+                          <Table variant="simple" size="sm">
+                            <Thead>
+                              <Tr>
+                                {Object.keys(step.content[0] || {}).map(key => (
+                                  <Th key={key} fontSize="xs" py={2} px={3} color="gray.700" fontWeight="semibold">{key}</Th>
+                                ))}
+                              </Tr>
+                            </Thead>
+                            <Tbody>
+                              {step.content.map((row: any, idx: number) => (
+                                <Tr key={idx} _hover={{ bg: "gray.100" }}>
+                                  {Object.values(row).map((value: any, valIdx: number) => (
+                                    <Td key={valIdx} fontSize="xs" py={2} px={3} color="gray.800">{String(value)}</Td>
                                   ))}
                                 </Tr>
-                              </Thead>
-                              <Tbody>
-                                {step.content.slice(0, 10).map((row: any, idx: number) => (
-                                  <Tr key={idx}>
-                                    {Object.values(row).map((value: any, valIdx: number) => (
-                                      <Td key={valIdx}>{String(value)}</Td>
-                                    ))}
-                                  </Tr>
-                                ))}
-                              </Tbody>
-                            </Table>
-                            {step.content.length > 10 && (
-                              <Text fontSize="sm" color="gray.600" mt={2} textAlign="center">
-                                ... ve {step.content.length - 10} satır daha
-                              </Text>
-                            )}
-                          </Box>
+                              ))}
+                            </Tbody>
+                          </Table>
                         </Box>
-                      )}
-                      
-                      {step.type === 'chart' && (
-                        <Box>
-                          <Text fontSize="lg" fontWeight="semibold" color="gray.800" mb={3}>
-                            Görselleştirme
-                          </Text>
-                          <Box
-                            bg="white"
-                            p={4}
-                            borderRadius="lg"
-                            border="1px"
-                            borderColor="gray.200"
-                          >
-                            {step.content.chart_data && step.content.chart_data.startsWith('data:image/') ? (
-                              <Image 
-                                src={step.content.chart_data} 
-                                alt="Data Chart"
-                                w="full"
-                                h="auto"
-                                borderRadius="md"
-                              />
-                            ) : step.content.chart_data ? (
-                              <Text color="gray.600">Chart formatında görüntülenemiyor</Text>
-                            ) : (
-                              <Text color="gray.600">Chart henüz oluşturulmadı</Text>
-                            )}
-                          </Box>
-                        </Box>
-                      )}
-                    </Box>
-                  ))}
-                </VStack>
-              </Box>
+                      </Box>
+                    )}
+                    
+                    {step.type === 'chart' && (
+                      <Box>
+                        {step.content.chart_data && step.content.chart_data.startsWith('data:image/') ? (
+                          <Image 
+                            src={step.content.chart_data} 
+                            alt="Data Chart"
+                            w="full"
+                            h="auto"
+                            borderRadius="md"
+                            maxH="200px"
+                            objectFit="contain"
+                          />
+                        ) : step.content.chart_data ? (
+                          <Text color="gray.600" fontSize="sm">Chart data available</Text>
+                        ) : (
+                          <Text color="gray.600" fontSize="sm">Chart not generated yet</Text>
+                        )}
+                      </Box>
+                    )}
+                  </Box>
+                ))}
+              </VStack>
             </Box>
           )}
 
@@ -1178,249 +1033,278 @@ function App() {
               border="1px"
               borderColor="gray.100"
             >
-              {/* Result Header */}
-              <Box 
-                bg="gray.50" 
-                px={8} 
-                py={6} 
-                borderBottom="1px" 
-                borderColor="gray.200"
-              >
-                <VStack spacing={3} align="start">
-                      <Text fontSize="xl" fontWeight="bold" color="gray.800">
-                        {result.title}
-                      </Text>
-                      <HStack spacing={4} wrap="wrap">
-                        <Badge colorScheme="blue" fontSize="sm" borderRadius="full" px={3} py={1}>
-                          {new Date(result.timestamp).toLocaleDateString()}
-                        </Badge>
-                        {result.chart_data && (
-                          <Badge colorScheme="green" fontSize="sm" borderRadius="full" px={3} py={1}>
-                            Visualization Available
-                          </Badge>
-                        )}
-                        <Badge colorScheme="purple" fontSize="sm" borderRadius="full" px={3} py={1}>
-                          {result.results ? result.results.length : 0} results
-                        </Badge>
-                  </HStack>
-                </VStack>
-              </Box>
 
-                  {/* Result Tabs */}
-                  <Tabs index={activeTab} onChange={setActiveTab} colorScheme="blue">
-                <TabList bg="gray.50" px={8} pt={4}>
-                  <Tab 
-                    _selected={{ 
-                      color: "blue.600",
-                          borderColor: "blue.600",
-                      fontWeight: "semibold"
-                    }}
-                  >
-                        AI Analysis
-                  </Tab>
-                  <Tab 
-                    _selected={{ 
-                      color: "blue.600",
-                          borderColor: "blue.600",
-                      fontWeight: "semibold"
-                    }}
-                  >
-                        SQL Query
-                  </Tab>
-                  <Tab 
-                    _selected={{ 
-                      color: "blue.600",
-                          borderColor: "blue.600",
-                      fontWeight: "semibold"
-                    }}
+
+                  {/* Chat-like Results Display */}
+                  <Box p={4}>
+                    <VStack spacing={4} align="stretch">
+                      {/* User Message */}
+                      <Box
+                        alignSelf="flex-end"
+                        maxW="75%"
+                        bg="red.600"
+                        p={3}
+                        borderRadius="2xl"
+                        color="white"
+                        boxShadow="0 2px 8px rgba(220, 38, 38, 0.2)"
                       >
-                        Data Results
-                      </Tab>
-                      <Tab 
-                        _selected={{ 
-                          color: "blue.600", 
-                          borderColor: "blue.600",
-                          fontWeight: "semibold"
-                        }}
-                      >
-                        Data Visualization
-                  </Tab>
-                </TabList>
-
-                <TabPanels>
-                      {/* AI Analysis */}
-                  <TabPanel p={8}>
-                    <VStack spacing={6} align="stretch">
-                      <Box>
-                        <Text fontSize="lg" fontWeight="semibold" color="gray.800" mb={3}>
-                              Natural Language Query
-                        </Text>
-                        <Box
-                          bg="gray.50"
-                              p={4}
-                              borderRadius="lg"
-                          border="1px"
-                          borderColor="gray.200"
-                            >
-                              <Text color="gray.700">{result.natural_query || 'No query available'}</Text>
-                            </Box>
-                          </Box>
-
-                          <Box>
-                            <Text fontSize="lg" fontWeight="semibold" color="gray.800" mb={3}>
-                              AI Explanation
-                            </Text>
-                            <Box
-                              bg="blue.50"
-                              p={4}
-                              borderRadius="lg"
-                              border="1px"
-                              borderColor="blue.200"
-                        >
-                          <ReactMarkdown
-                            components={{
-                                  code({node, className, children, ...props}: any) {
-                                    const match = /language-(\w+)/.exec(className || '')
-                                return match ? (
-                                  <SyntaxHighlighter
-                                    style={atomDark}
-                                    language={match[1]}
-                                    PreTag="div"
-                                        customStyle={{}}
-                                        {...props}
-                                  >
-                                    {String(children).replace(/\n$/, '')}
-                                  </SyntaxHighlighter>
-                                ) : (
-                                      <code className={className} {...props}>
-                                    {children}
-                                      </code>
-                                    )
-                                  }
-                            }}
-                          >
-                            {result.explanation || 'No explanation available'}
-                          </ReactMarkdown>
-                        </Box>
-                      </Box>
+                        <VStack spacing={1} align="end">
+                          <Text fontSize="sm" fontWeight="medium">
+                            {result.natural_query}
+                          </Text>
+                          <Text fontSize="xs" color="red.100">
+                            {new Date(result.timestamp).toLocaleString()}
+                          </Text>
                         </VStack>
-                      </TabPanel>
+                      </Box>
+                      
+                      {/* AI Explanation */}
+                      <Box
+                        alignSelf="flex-start"
+                        maxW="75%"
+                        bg="white"
+                        p={4}
+                        borderRadius="2xl"
+                        border="1px"
+                        borderColor="gray.200"
+                        boxShadow="0 2px 8px rgba(0, 0, 0, 0.08)"
+                      >
+                        <HStack spacing={3} mb={3} align="center">
+                          <Image
+                            src="/assets/247b5df2eca666f9b7fc7d57907d4bd041dea7afba62f9f0f8b22e8e9e285702.png"
+                            alt="AImet Mascot"
+                            w={6}
+                            h={6}
+                            borderRadius="full"
+                            objectFit="cover"
+                            flexShrink={0}
+                          />
+                          <Text fontSize="sm" fontWeight="medium" color="gray.700" textTransform="uppercase" letterSpacing="wide">
+                            Analysis
+                          </Text>
+                        </HStack>
+                        <Text color="gray.700" fontSize="md" lineHeight="1.5">
+                          {result.explanation || 'No explanation available'}
+                        </Text>
+                      </Box>
 
                       {/* SQL Query */}
-                      <TabPanel p={8}>
-                        <VStack spacing={4} align="stretch">
-                          <HStack justify="space-between" align="center">
-                            <Text fontSize="lg" fontWeight="semibold" color="gray.800">
-                              Generated SQL Query
-                        </Text>
-                            <HStack spacing={2}>
+                      <Box
+                        alignSelf="flex-start"
+                        maxW="75%"
+                        bg="white"
+                        p={4}
+                        borderRadius="2xl"
+                        border="1px"
+                        borderColor="gray.200"
+                        boxShadow="0 2px 8px rgba(0, 0, 0, 0.08)"
+                      >
+                        <HStack spacing={3} mb={3} align="center" justify="space-between">
+                          <HStack spacing={3}>
+                            <Image
+                              src="/assets/247b5df2eca666f9b7fc7d57907d4bd041dea7afba62f9f0f8b22e8e9e285702.png"
+                              alt="AImet Mascot"
+                              w={6}
+                              h={6}
+                              borderRadius="full"
+                              objectFit="cover"
+                              flexShrink={0}
+                            />
+                            <Text fontSize="sm" fontWeight="medium" color="gray.700" textTransform="uppercase" letterSpacing="wide">
+                              SQL Query
+                            </Text>
+                          </HStack>
                           <Button
                             size="sm"
-                                variant="outline"
-                                colorScheme="blue"
+                            variant="ghost"
+                            colorScheme="gray"
                             onClick={() => {
                               navigator.clipboard.writeText(result.sql_query);
                               toast({
-                                    title: "SQL copied!",
-                                    description: "SQL query copied to clipboard",
+                                title: "SQL copied!",
+                                description: "SQL query copied to clipboard",
                                 status: "success",
                                 duration: 2000,
                                 isClosable: true,
                               });
                             }}
-                                leftIcon={<Icon as={CopyIcon} />}
+                            leftIcon={<Icon as={CopyIcon} />}
                           >
-                                Copy SQL
+                            Copy
                           </Button>
-                            </HStack>
-                          </HStack>
-                          
-                          <Box
-                            bg="gray.900"
-                            p={4}
-                            borderRadius="lg"
-                            overflow="auto"
-                            maxH="400px"
-                          >
-                          <SyntaxHighlighter
-                            style={atomDark}
-                            language="sql"
-                            customStyle={{
-                              margin: 0,
-                                backgroundColor: 'transparent',
-                                fontSize: '14px'
-                            }}
-                          >
-                            {result.sql_query || 'No SQL query available'}
-                          </SyntaxHighlighter>
-                      </Box>
-                    </VStack>
-                  </TabPanel>
-
-                      {/* Data Results */}
-                  <TabPanel p={8}>
-                        <VStack spacing={4} align="stretch">
-                          <HStack justify="space-between" align="center">
-                      <Text fontSize="lg" fontWeight="semibold" color="gray.800">
-                        Query Results
-                      </Text>
-                            <Text fontSize="sm" color="gray.600">
-                              {result.results ? result.results.length : 0} rows returned
-                            </Text>
-                          </HStack>
-                      
-                          {result.results && result.results.length > 0 ? (
+                        </HStack>
                         <Box
-                              overflow="auto"
-                              maxH="500px"
+                          bg="gray.50"
+                          p={3}
+                          borderRadius="lg"
                           border="1px"
                           borderColor="gray.200"
-                              borderRadius="lg"
+                          overflow="auto"
+                          maxW="100%"
                         >
-                          <Table variant="simple" bg="white">
-                            <Thead bg="gray.100">
-                              <Tr>
-                                {Object.keys(result.results[0] || {}).map((key) => (
-                                  <Th key={key} py={4} px={6} color="gray.700" fontWeight="semibold">
-                                    {key}
-                                  </Th>
-                                ))}
-                              </Tr>
-                            </Thead>
-                            <Tbody>
-                              {result.results.map((row, index) => (
-                                <Tr key={index} _hover={{ bg: "gray.50" }}>
-                                  {Object.values(row || {}).map((value, cellIndex) => (
-                                    <Td key={cellIndex} py={3} px={6} color="gray.800">
-                                      {String(value || '')}
-                                    </Td>
+                          <Code color="gray.800" fontSize="xs" whiteSpace="pre-wrap" bg="transparent">
+                            {result.sql_query || 'No SQL query available'}
+                          </Code>
+                        </Box>
+                      </Box>
+
+                      {/* Data Results */}
+                      <Box
+                        alignSelf="flex-start"
+                        maxW="75%"
+                        bg="white"
+                        p={4}
+                        borderRadius="2xl"
+                        border="1px"
+                        borderColor="gray.200"
+                        boxShadow="0 2px 8px rgba(0, 0, 0, 0.08)"
+                      >
+                        <HStack spacing={3} mb={3} align="center">
+                          <Image
+                            src="/assets/247b5df2eca666f9b7fc7d57907d4bd041dea7afba62f9f0f8b22e8e9e285702.png"
+                            alt="AImet Mascot"
+                            w={6}
+                            h={6}
+                            borderRadius="full"
+                            objectFit="cover"
+                            flexShrink={0}
+                          />
+                          <Text fontSize="sm" fontWeight="medium" color="gray.700" textTransform="uppercase" letterSpacing="wide">
+                            Data Results ({result.results ? result.results.length : 0} rows)
+                          </Text>
+                        </HStack>
+                        
+                        {result.results && result.results.length > 0 ? (
+                          <Box
+                            bg="gray.50"
+                            p={3}
+                            borderRadius="lg"
+                            border="1px"
+                            borderColor="gray.200"
+                            maxH="250px"
+                            overflow="auto"
+                          >
+                            <Table variant="simple" size="sm">
+                              <Thead>
+                                <Tr>
+                                  {Object.keys(result.results[0] || {}).map((key) => (
+                                    <Th key={key} fontSize="xs" py={2} px={3} color="gray.700" fontWeight="semibold">{key}</Th>
                                   ))}
                                 </Tr>
-                              ))}
-                            </Tbody>
-                          </Table>
-                        </Box>
-                      ) : (
-                        <Box textAlign="center" py={12}>
-                          <Text color="gray.500" fontSize="lg">
+                              </Thead>
+                              <Tbody>
+                                {result.results.map((row, index) => (
+                                  <Tr key={index} _hover={{ bg: "gray.100" }}>
+                                    {Object.values(row || {}).map((value, cellIndex) => (
+                                      <Td key={cellIndex} py={2} px={3} fontSize="xs" color="gray.800">
+                                        {String(value || '')}
+                                      </Td>
+                                    ))}
+                                  </Tr>
+                                ))}
+                              </Tbody>
+                            </Table>
+                          </Box>
+                        ) : (
+                          <Text color="gray.500" fontSize="sm">
                             No results found for this query
                           </Text>
+                        )}
+                      </Box>
+
+                      {/* Data Visualization */}
+                      {result.chart_data && (
+                        <Box
+                          alignSelf="flex-start"
+                          maxW="75%"
+                          bg="white"
+                          p={4}
+                          borderRadius="2xl"
+                          border="1px"
+                          borderColor="gray.200"
+                          boxShadow="0 2px 8px rgba(0, 0, 0, 0.08)"
+                        >
+                          <HStack spacing={3} mb={3} align="center">
+                            <Image
+                              src="/assets/247b5df2eca666f9b7fc7d57907d4bd041dea7afba62f9f0f8b22e8e9e285702.png"
+                              alt="AImet Mascot"
+                              w={6}
+                              h={6}
+                              borderRadius="full"
+                              objectFit="cover"
+                              flexShrink={0}
+                            />
+                            <Text fontSize="sm" fontWeight="medium" color="gray.700" textTransform="uppercase" letterSpacing="wide">
+                              Chart
+                            </Text>
+                          </HStack>
+                          {renderChart()}
                         </Box>
                       )}
                     </VStack>
-                  </TabPanel>
-
-                  {/* Data Visualization */}
-                  <TabPanel p={8}>
-                    {renderChart()}
-                  </TabPanel>
-                </TabPanels>
-              </Tabs>
+                  </Box>
             </Box>
           )}
             </VStack>
           </Container>
               </Box>
+        
+        {/* Fixed Chat Input at Bottom */}
+        <Box
+          position="fixed"
+          bottom={0}
+          left={isDesktop && !sidebarCollapsed ? "320px" : "0px"}
+          right={0}
+          bg="white"
+          borderTop="1px"
+          borderColor="gray.200"
+          p={3}
+          zIndex={20}
+          boxShadow="0 -2px 10px rgba(0, 0, 0, 0.1)"
+          transition="left 0.3s ease"
+        >
+          <Container maxW="4xl">
+            <HStack spacing={3} as="form" onSubmit={handleSubmit}>
+              <Input
+                placeholder="Ask me anything about your HR data..."
+                value={query}
+                onChange={(e) => setQuery(e.target.value)}
+                size="md"
+                borderRadius="xl"
+                border="2px"
+                borderColor="red.200"
+                _focus={{
+                  borderColor: "red.400",
+                  boxShadow: "0 0 0 3px rgba(220, 38, 38, 0.1)"
+                }}
+                _hover={{ borderColor: "red.300" }}
+                onKeyPress={(e) => e.key === 'Enter' && handleSubmit(e)}
+                bg="white"
+                flex={1}
+              />
+              <Button
+                type="submit"
+                colorScheme="red"
+                size="md"
+                px={6}
+                py={5}
+                fontSize="md"
+                fontWeight="semibold"
+                borderRadius="xl"
+                boxShadow="0 2px 10px rgba(220, 38, 38, 0.3)"
+                isLoading={loading}
+                loadingText="Executing..."
+                _hover={{
+                  transform: "translateY(-1px)",
+                  boxShadow: "0 4px 15px rgba(220, 38, 38, 0.4)"
+                }}
+                transition="all 0.2s"
+              >
+                Execute
+              </Button>
+            </HStack>
+          </Container>
+        </Box>
       </Flex>
 
       {/* Mobile Sidebar Drawer */}
@@ -1434,12 +1318,12 @@ function App() {
         <DrawerContent>
           <DrawerCloseButton />
           <DrawerHeader bg="gray.50" borderBottom="1px" borderColor="gray.200">
-            Query History
+            <Text color="gray.800">Chat History</Text>
           </DrawerHeader>
           <DrawerBody p={4}>
             {loadingHistory ? (
               <VStack spacing={4} py={8}>
-                <Spinner size="md" color="blue.500" />
+                <Spinner size="md" color="red.500" />
                 <Text fontSize="sm" color="gray.600">Loading history...</Text>
               </VStack>
             ) : history.length > 0 ? (
@@ -1448,9 +1332,9 @@ function App() {
                     session.queries.map((item, index) => (
                       <Box
                         key={`${session.id}-${index}`}
-                      p={3}
-                        bg={result?.session_id === item.session_id ? 'blue.50' : 'gray.50'}
-                      borderRadius="lg"
+                      p={4}
+                        bg={result?.session_id === item.session_id ? 'red.50' : 'white'}
+                      borderRadius="xl"
                         cursor="pointer"
                       onClick={() => {
                         console.log('History item clicked:', item);
@@ -1458,27 +1342,27 @@ function App() {
                         setSidebarOpen(false); // Close drawer after selection
                       }}
                         _hover={{ 
-                          bg: result?.session_id === item.session_id ? 'blue.100' : 'gray.100',
+                          bg: result?.session_id === item.session_id ? 'red.100' : 'gray.50',
                         transform: 'translateY(-1px)',
-                        boxShadow: '0 2px 8px rgba(0, 0, 0, 0.1)'
+                        boxShadow: '0 4px 12px rgba(0, 0, 0, 0.1)'
                         }}
                         transition="all 0.2s"
                         border="1px"
-                        borderColor={result?.session_id === item.session_id ? 'blue.200' : 'gray.200'}
+                        borderColor={result?.session_id === item.session_id ? 'red.200' : 'gray.200'}
                       >
-                      <VStack spacing={2} align="start">
-                        <Text fontSize="sm" fontWeight="medium" color="gray.800" noOfLines={2}>
+                                              <VStack spacing={3} align="start">
+                          <Text fontSize="sm" fontWeight="medium" color="gray.800" noOfLines={2}>
                             {item.natural_query}
                           </Text>
-                        <HStack spacing={2} justify="space-between" w="full">
-                          <Badge colorScheme="blue" fontSize="xs" borderRadius="full" px={2} py={1}>
-                                {new Date(item.timestamp).toLocaleDateString()}
+                          <HStack spacing={2} justify="space-between" w="full">
+                            <Text fontSize="xs" color="gray.500">
+                              {new Date(item.timestamp).toLocaleDateString()}
+                            </Text>
+                            {item.chart_data && (
+                              <Badge colorScheme="green" fontSize="xs" borderRadius="full" px={2} py={1}>
+                                Chart
                               </Badge>
-                              {item.chart_data && (
-                            <Badge colorScheme="green" fontSize="xs" borderRadius="full" px={2} py={1}>
-                                  Chart
-                                </Badge>
-                              )}
+                            )}
                           </HStack>
                         </VStack>
                       </Box>
@@ -1503,8 +1387,8 @@ function App() {
       <Modal isOpen={isOpen} onClose={onClose} size="6xl">
         <ModalOverlay />
         <ModalContent>
-          <ModalHeader>Data Visualization</ModalHeader>
-          <ModalCloseButton />
+          <ModalHeader bg="red.900" color="white">Data Visualization</ModalHeader>
+          <ModalCloseButton color="white" />
           <ModalBody pb={6}>
             {result?.chart_data && (
               <Image 
