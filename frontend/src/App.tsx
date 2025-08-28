@@ -49,7 +49,7 @@ import {
   useDisclosure,
   useBreakpointValue
 } from '@chakra-ui/react';
-import { ViewIcon, CopyIcon, CheckIcon, HamburgerIcon } from '@chakra-ui/icons';
+import { ViewIcon, CopyIcon, CheckIcon, HamburgerIcon, AddIcon } from '@chakra-ui/icons';
 import axios from 'axios';
 import ReactMarkdown from 'react-markdown';
 import { Prism as SyntaxHighlighter } from 'react-syntax-highlighter';
@@ -176,6 +176,14 @@ function App() {
     const interval = setInterval(fetchHistory, 300000)
     return () => clearInterval(interval)
   }, [])
+
+  const handleNewChat = () => {
+    setResult(null);
+    setChatSteps([]);
+    setQuery('');
+    setIsStreaming(false);
+    setLoading(false);
+  };
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -641,8 +649,9 @@ function App() {
       <Box 
         borderBottom="1px" 
         borderColor="gray.200" 
-        px={6} 
-        py={4}
+        px={4} 
+        py={2}
+        h="60px"
         position="sticky"
         top={0}
         zIndex={10}
@@ -650,18 +659,24 @@ function App() {
         bg="rgba(255, 255, 255, 0.95)"
       >
         <Container maxW="7xl">
-          <HStack justify="space-between" align="center">
-            <HStack spacing={3}>
+          <HStack justify="space-between" align="center" h="full">
+            <HStack spacing={3} align="center">
               <Image
-                src="/assets/BilişimAI logo.JPG"
+                src="/assets/BilişimAI logo-Photoroom.png"
                 alt="BilişimAI Logo"
-                w={48}
-                h={24}
-          
+                h="72px"
+                w="auto"
+                objectFit="contain"
+                ml={-6}
+                mt={-2}
+                cursor="pointer"
+                onClick={handleNewChat}
+                _hover={{ transform: "scale(1.05)" }}
+                transition="transform 0.2s"
               />
             </HStack>
             
-            <HStack spacing={4}>
+            <HStack spacing={3} align="center">
               {/* Mobile menu button */}
               {!isDesktop && (
                 <IconButton
@@ -673,27 +688,32 @@ function App() {
                 />
               )}
               
-              {/* Desktop sidebar toggle */}
-              {isDesktop && (
-              <Button
-                size="sm"
-                variant="ghost"
-                colorScheme="gray"
-                  onClick={() => setSidebarCollapsed(!sidebarCollapsed)}
-                leftIcon={<Icon as={ViewIcon} />}
+              {/* User Profile */}
+              <Box
+                w={8}
+                h={8}
+                borderRadius="full"
+                bg="red.600"
+                display="flex"
+                alignItems="center"
+                justifyContent="center"
+                color="white"
+                fontSize="sm"
+                fontWeight="bold"
+                cursor="pointer"
+                _hover={{ bg: "red.700" }}
+                transition="all 0.2s"
+                mt={-1}
               >
-                  {sidebarCollapsed ? 'Show History' : 'Hide History'}
-                </Button>
-              )}
-              
-
+                AE
+              </Box>
             </HStack>
           </HStack>
         </Container>
       </Box>
 
       {/* Main Layout with Sidebar */}
-      <Flex h="calc(100vh - 80px)">
+      <Flex h="calc(100vh - 60px)">
         {/* Desktop Sidebar */}
         {isDesktop && (
           <Box
@@ -709,6 +729,15 @@ function App() {
             {sidebarCollapsed ? (
               // Collapsed sidebar
               <VStack spacing={4} py={4} align="center">
+                <IconButton
+                  aria-label="New Chat"
+                  icon={<AddIcon />}
+                  onClick={handleNewChat}
+                  variant="ghost"
+                  size="sm"
+                  colorScheme="red"
+                  _hover={{ bg: "red.50" }}
+                />
                 <IconButton
                   aria-label="Expand sidebar"
                   icon={<ViewIcon />}
@@ -733,14 +762,25 @@ function App() {
                     <Text fontSize="lg" fontWeight="semibold" color="gray.800">
                       Chat History
                     </Text>
-                    <IconButton
-                      aria-label="Collapse sidebar"
-                      icon={<ViewIcon />}
-                      onClick={() => setSidebarCollapsed(true)}
-                      variant="ghost"
-                      size="sm"
-                      colorScheme="gray"
-                    />
+                    <HStack spacing={2}>
+                      <IconButton
+                        aria-label="New Chat"
+                        icon={<AddIcon />}
+                        onClick={handleNewChat}
+                        variant="ghost"
+                        size="sm"
+                        colorScheme="red"
+                        _hover={{ bg: "red.50" }}
+                      />
+                      <IconButton
+                        aria-label="Toggle sidebar"
+                        icon={<HamburgerIcon />}
+                        onClick={() => setSidebarCollapsed(!sidebarCollapsed)}
+                        variant="ghost"
+                        size="sm"
+                        colorScheme="gray"
+                      />
+                    </HStack>
                   </HStack>
                 </Box>
                 
@@ -848,20 +888,57 @@ function App() {
               mx="auto"
             >
               <VStack spacing={6}>
-                <Image
-                  src="/assets/247b5df2eca666f9b7fc7d57907d4bd041dea7afba62f9f0f8b22e8e9e285702.png"
-                  alt="AImet Mascot"
-                  w={32}
-                  h={32}
-                  mx="auto"
-                />
-                <VStack spacing={3}>
-                  <Heading size="lg" color="red.800" fontWeight="bold">
-                    Hey, I'm AImet! 🤖
+                <VStack spacing={4} align="center">
+                  <Image
+                    src="/assets/247b5df2eca666f9b7fc7d57907d4bd041dea7afba62f9f0f8b22e8e9e285702.png"
+                    alt="AImet Mascot"
+                    w={24}
+                    h={24}
+                  />
+                  <Heading size="lg" color="red.800" fontWeight="bold" textAlign="center">
+                    Hey, I'm AImet!
                   </Heading>
-                  <Text fontSize="md" color="gray.600">
-                    How can I help you today? Ask me anything about your HR data and I'll analyze it for you.
+                </VStack>
+                
+                <Text fontSize="md" color="gray.600" textAlign="center">
+                  How can I help you today? Ask me anything about your HR data and I'll analyze it for you.
+                </Text>
+                
+                {/* Example Queries */}
+                <VStack spacing={4} w="full" maxW="2xl">
+                  <Text fontSize="sm" color="gray.500" fontWeight="medium" textTransform="uppercase" letterSpacing="wide">
+                    Try these examples:
                   </Text>
+                  <VStack spacing={3} w="full">
+                    {[
+                      "Show me employee count by department",
+                      "What's the average salary by job title?",
+                      "Which employees have the highest engagement scores?",
+                      "How many people were hired last month?",
+                      "What's the training completion rate by team?"
+                    ].map((example, index) => (
+                      <Button
+                        key={index}
+                        variant="outline"
+                        size="md"
+                        w="full"
+                        justifyContent="flex-start"
+                        textAlign="left"
+                        colorScheme="red"
+                        borderColor="red.200"
+                        color="gray.700"
+                        _hover={{
+                          bg: "red.50",
+                          borderColor: "red.300",
+                          transform: "translateY(-1px)"
+                        }}
+                        onClick={() => setQuery(example)}
+                        transition="all 0.2s"
+                      >
+                        {example}
+                      </Button>
+                    ))}
+                  </VStack>
                 </VStack>
               </VStack>
             </Box>
@@ -1255,16 +1332,23 @@ function App() {
           bottom={0}
           left={isDesktop && !sidebarCollapsed ? "320px" : "0px"}
           right={0}
-          bg="white"
-          borderTop="1px"
-          borderColor="gray.200"
+          bg="transparent"
           p={3}
           zIndex={20}
-          boxShadow="0 -2px 10px rgba(0, 0, 0, 0.1)"
           transition="left 0.3s ease"
         >
           <Container maxW="4xl">
-            <HStack spacing={3} as="form" onSubmit={handleSubmit}>
+            <HStack 
+              spacing={3} 
+              as="form" 
+              onSubmit={handleSubmit}
+              bg="white"
+              p={4}
+              borderRadius="xl"
+              border="1px"
+              borderColor="gray.200"
+              boxShadow="0 -2px 20px rgba(0, 0, 0, 0.1)"
+            >
               <Input
                 placeholder="Ask me anything about your HR data..."
                 value={query}
