@@ -98,6 +98,8 @@ function App() {
   const [loadingHistory, setLoadingHistory] = useState(false)
   const [activeTab, setActiveTab] = useState(0);
   const [sidebarOpen, setSidebarOpen] = useState(false);
+  
+  const [error, setError] = useState<string | null>(null)
   const { isOpen, onOpen, onClose } = useDisclosure()
   const toast = useToast()
   
@@ -341,6 +343,8 @@ function App() {
       }])
     }
   }
+
+
 
 
 
@@ -938,9 +942,31 @@ function App() {
                   >
                     Execute
                   </Button>
+                  
+
                 </HStack>
               </VStack>
           </Box>
+
+          {/* Error Display */}
+          {error && (
+            <Box
+              bg="red.50"
+              borderRadius="2xl"
+              p={6}
+              border="1px"
+              borderColor="red.200"
+              mb={6}
+            >
+              <Alert status="error" borderRadius="xl">
+                <AlertIcon />
+                <Box>
+                  <AlertTitle>Error!</AlertTitle>
+                  <AlertDescription>{error}</AlertDescription>
+                </Box>
+              </Alert>
+            </Box>
+          )}
 
           {/* Loading State */}
           {loading && (
@@ -966,6 +992,8 @@ function App() {
               </VStack>
             </Box>
           )}
+
+
 
           {/* Live Streaming Chat Steps */}
           {isStreaming && chatSteps.length > 0 && (

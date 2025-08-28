@@ -9,12 +9,13 @@ This API provides endpoints:
 import asyncio
 import time
 import datetime
+import json
 from collections import deque
 from typing import Dict, List, Any, Optional
 import logging
 from fastapi import FastAPI, Request, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import JSONResponse
+from fastapi.responses import JSONResponse, StreamingResponse
 from pydantic import BaseModel
 from langchain_utils import (
     process_natural_query_langchain, 
@@ -54,7 +55,16 @@ app = FastAPI(
 #CORS middleware settings at first - CORS middleware must be first
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["http://localhost:3000", "http://localhost:3001", "http://127.0.0.1:3000", "http://127.0.0.1:3001"],  # Specific origins
+    allow_origins=[
+        "http://localhost:3000", 
+        "http://localhost:3001", 
+        "http://localhost:3002",
+        "http://127.0.0.1:3000", 
+        "http://127.0.0.1:3001",
+        "http://127.0.0.1:3002",
+        "null",  # Allow file:// protocol for demo
+        "*"  # Allow all origins for development
+    ],  # Specific origins
     allow_credentials=True,  # Allow credentials
     allow_methods=["GET", "POST", "PUT", "DELETE", "OPTIONS"],  # Specific methods
     allow_headers=["*"],  # Allow all headers
@@ -230,6 +240,39 @@ async def generate_sql(request: QueryRequest) -> GenerateSQLResponse:
     except Exception as e:
         logger.error(f"Error generating SQL with LangChain: {e}")
         raise HTTPException(status_code=500, detail=f"Error generating SQL: {str(e)}")
+
+@app.post("/generate-sql-stream")
+async def generate_sql_stream(request: QueryRequest):
+    """Generate SQL from natural language query using LangChain with streaming for realtime responses"""
+    try:
+        logger.info(f"Received streaming natural query: {request.query}")
+        
+        async def generate_stream():
+            # Process query with LangChain streaming
+            from langchain_utils import process_natural_query_langchain_streaming
+            result = process_natural_query_langchain_streaming(request.query)
+            
+            # Stream the result in chunks
+            for chunk in result:
+                if chunk:
+                    yield f"data: {json.dumps(chunk)}\n\n"
+            
+            # Send completion signal
+            yield f"data: {json.dumps({'type': 'complete'})}\n\n"
+        
+        return StreamingResponse(
+            generate_stream(),
+            media_type="text/plain",
+            headers={
+                "Cache-Control": "no-cache",
+                "Connection": "keep-alive",
+                "Content-Type": "text/event-stream",
+            }
+        )
+        
+    except Exception as e:
+        logger.error(f"Error in streaming SQL generation: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
 
 @app.post("/execute-sql", response_model=ExecuteSQLResponse)
 async def execute_sql(request: QueryRequest) -> ExecuteSQLResponse:

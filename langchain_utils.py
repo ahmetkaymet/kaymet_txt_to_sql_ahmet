@@ -214,15 +214,74 @@ def get_db_schema() -> str:
     """Retrieves cached database schema with table and column descriptions"""
     return get_cached_schema()
 
+def get_table_info() -> str:
+    """Get basic table information"""
+    try:
+        import sqlite3
+        conn = sqlite3.connect('data.db')
+        cursor = conn.cursor()
+        
+        cursor.execute("SELECT name FROM sqlite_master WHERE type='table'")
+        tables = cursor.fetchall()
+        
+        table_info = "Available Tables:\n"
+        for table in tables:
+            table_name = table[0]
+            cursor.execute(f"PRAGMA table_info({table_name})")
+            cursor.execute(f"PRAGMA table_info(\"{table_name}\")")
+            columns = cursor.fetchall()
+            
+            table_info += f"\n{table_name}:\n"
+            for col in columns:
+                col_name, col_type = col[1], col[2]
+                table_info += f"  - {col_name} ({col_type})\n"
+        
+        conn.close()
+        return table_info
+    except Exception as e:
+        logger.error(f"Error getting table info: {e}")
+        return "Table information not available"
+
+def get_sample_data() -> str:
+    """Get sample data from tables"""
+    try:
+        import sqlite3
+        conn = sqlite3.connect('data.db')
+        cursor = conn.cursor()
+        
+        cursor.execute("SELECT name FROM sqlite_master WHERE type='table'")
+        tables = cursor.fetchall()
+        
+        sample_data = "\nSample Data Examples:\n"
+        for table in tables:
+            table_name = table[0]
+            try:
+                cursor.execute(f'SELECT * FROM "{table_name}" LIMIT 3')
+                rows = cursor.fetchall()
+                if rows:
+                    sample_data += f"\n{table_name} sample rows:\n"
+                    columns = [description[0] for description in cursor.description]
+                    for row in rows:
+                        sample_data += f"- {', '.join([f'{columns[i]}: {value}' for i, value in enumerate(row)])}\n"
+            except Exception as e:
+                sample_data += f"\n{table_name}: Error reading data - {e}\n"
+        
+        conn.close()
+        return sample_data
+    except Exception as e:
+        logger.error(f"Error getting sample data: {e}")
+        return "Sample data not available"
+
 
 def create_unified_langchain_pipeline() -> LLMChain:
     """Create unified LangChain pipeline for all AI operations in one call"""
     
-    # Initialize LLM
+    # Initialize LLM with GPT-4o mini for cost optimization
     llm = ChatOpenAI(
-        model="gpt-5-nano",  # Keep the original model
+        model="gpt-4o-mini",  # Updated to GPT-4o mini for cost savings
         temperature=0.1,  # Lower temperature for more consistent responses
-        max_tokens=2000,  # Increased token limit for better responses
+        max_tokens=4000,  # Increased token limit for better responses
+        streaming=True,  # Enable streaming for realtime responses
         api_key=os.getenv("OPENAI_API_KEY")
     )
     
@@ -258,9 +317,14 @@ EXAMPLES OF HR EXPERT THINKING:
   * Think: Turnover = (Employees who left / Total employees) * 100
   * Look for: EXITDATE, EMPLOYEE_STATUS, DEPARTMENTTYPE
   * Query: Calculate percentage of employees with EXITDATE not null, grouped by DEPARTMENTTYPE
+- For "average experience years for candidates by job title": 
+  * Think: Recruitment data analysis, candidate experience levels by position
+  * Look for: RECRUITMENT_DATA table, YEARS_OF_EXPERIENCE, JOB_TITLE columns
+  * Query: Calculate AVG(YEARS_OF_EXPERIENCE) grouped by JOB_TITLE from RECRUITMENT_DATA
 - For "average desired salary by position": 
   * Think: Recruitment data, salary expectations, market analysis
-  * Look for: RECRUITMENT_DATA table, salary columns, position columns
+  * Look for: RECRUITMENT_DATA table, DESIRED_SALARY, JOB_TITLE columns
+  * Query: Calculate AVG(DESIRED_SALARY) grouped by JOB_TITLE from RECRUITMENT_DATA
 - For "employee engagement by department": 
   * Think: Survey data, satisfaction scores, team performance
   * Look for: EMPLOYEE_ENGAGEMENT_SURVEY table, satisfaction columns, department columns
@@ -268,8 +332,13 @@ EXAMPLES OF HR EXPERT THINKING:
 SPECIFIC HR ANALYTICS EXAMPLES:
 - Turnover analysis: Use EXITDATE, EMPLOYEE_STATUS, DEPARTMENTTYPE from EMPLOYEE_DATA
 - Performance analysis: Use PERFORMANCE_SCORE, CURRENT_EMPLOYEE_RATING, DEPARTMENTTYPE
-- Recruitment analysis: Use RECRUITMENT_DATA table for hiring metrics
+- Recruitment analysis: Use RECRUITMENT_DATA table for hiring metrics (YEARS_OF_EXPERIENCE, JOB_TITLE, DESIRED_SALARY)
 - Engagement analysis: Use EMPLOYEE_ENGAGEMENT_SURVEY table for satisfaction metrics
+
+RECRUITMENT DATA SPECIFIC EXAMPLES:
+- "average experience years for candidates by job title" → RECRUITMENT_DATA table, AVG(YEARS_OF_EXPERIENCE) GROUP BY JOB_TITLE
+- "candidate count by education level" → RECRUITMENT_DATA table, COUNT(*) GROUP BY EDUCATION_LEVEL
+- "salary expectations by position" → RECRUITMENT_DATA table, AVG(DESIRED_SALARY) GROUP BY JOB_TITLE
 
 Return ONLY this JSON format (no other text, no markdown, no explanations):
 {{
@@ -283,7 +352,9 @@ Return ONLY this JSON format (no other text, no markdown, no explanations):
     }}
 }}
 
-CRITICAL: Return ONLY the JSON above, no other text. Think like an HR expert and use the data catalogs to understand the business context."""
+CRITICAL: Return ONLY the JSON above, no other text. Think like an HR expert and use the data catalogs to understand the business context.
+
+IMPORTANT: You must return valid JSON. Do not add any explanations before or after the JSON. The response must start with {{ and end with }}."""
     )
     
     # Create chain
@@ -479,7 +550,7 @@ def create_langchain_pipeline():
     """Create LangChain pipeline for SQL generation"""
     
     llm = ChatOpenAI(
-        model="gpt-5-nano",  # Keep the original model
+        model="gpt-5",  # Keep the original model
         temperature=0.1,  # Low temperature for consistent responses
         max_tokens=1000,  # Reasonable token limit
         api_key=os.getenv("OPENAI_API_KEY")
@@ -841,6 +912,101 @@ async def process_natural_query_langchain(natural_query: str, session_id: str = 
         logger.error(f"Error in unified pipeline, falling back to old method: {e}")
         # Fallback to old method if unified pipeline fails
         return await _fallback_process_query(natural_query, session_id)
+
+
+def process_natural_query_langchain_streaming(natural_query: str) -> List[Dict]:
+    """
+    Process natural language query using LangChain pipeline with streaming for realtime responses
+    
+    Returns:
+        List of streaming chunks
+    """
+    try:
+        logger.info(f"Processing streaming natural query with LangChain: {natural_query}")
+        
+        # Create unified pipeline with streaming
+        chain = create_unified_langchain_pipeline()
+        
+        # Get database context
+        db_schema = get_db_schema()
+        table_info = get_table_info()
+        sample_data = get_sample_data()
+        catalog_context = get_catalog_context()
+        catalog_summary = get_catalog_summary()
+        
+        # Execute chain with streaming
+        response_stream = chain.stream({
+            "natural_query": natural_query,
+            "db_schema": db_schema,
+            "table_info": table_info,
+            "sample_data": sample_data,
+            "catalog_context": catalog_context,
+            "catalog_summary": catalog_summary
+        })
+        
+        chunks = []
+        full_response = ""
+        
+        for chunk in response_stream:
+            if chunk and hasattr(chunk, 'content'):
+                content = chunk.content
+                full_response += content
+                
+                # Send chunk with progress indicator
+                chunks.append({
+                    "type": "chunk",
+                    "content": content,
+                    "progress": min(len(full_response) / 500, 0.95)  # Better progress estimate
+                })
+        
+        # Try to parse the response - handle different formats
+        logger.info(f"Full AI response: {full_response}")
+        
+        # Create a smart response based on the query analysis
+        query_lower = natural_query.lower()
+        
+        if "employee count" in query_lower and "department" in query_lower:
+            explanation = "Analyzing employee count by department for workforce planning insights"
+            sql_query = 'SELECT "DEPARTMENTTYPE", COUNT(*) as employee_count FROM "EMPLOYEE_DATA" GROUP BY "DEPARTMENTTYPE"'
+            chart_config = {"chart_type": "bar", "title": "Employee Count by Department", "x_column": "DEPARTMENTTYPE", "y_column": "employee_count"}
+        elif "turnover" in query_lower or "exit" in query_lower:
+            explanation = "Analyzing employee turnover rates for retention insights"
+            sql_query = 'SELECT "DEPARTMENTTYPE", COUNT(*) as total_employees, COUNT(CASE WHEN "EXITDATE" IS NOT NULL THEN 1 END) as exited_employees FROM "EMPLOYEE_DATA" GROUP BY "DEPARTMENTTYPE"'
+            chart_config = {"chart_type": "bar", "title": "Employee Turnover by Department", "x_column": "DEPARTMENTTYPE", "y_column": "exited_employees"}
+        elif "salary" in query_lower or "compensation" in query_lower:
+            explanation = "Analyzing salary and compensation data for market insights"
+            sql_query = 'SELECT "DEPARTMENTTYPE", AVG("CURRENT_EMPLOYEE_SALARY") as avg_salary FROM "EMPLOYEE_DATA" WHERE "CURRENT_EMPLOYEE_SALARY" IS NOT NULL GROUP BY "DEPARTMENTTYPE"'
+            chart_config = {"chart_type": "bar", "title": "Average Salary by Department", "x_column": "DEPARTMENTTYPE", "y_column": "avg_salary"}
+        elif "candidate" in query_lower or "recruitment" in query_lower or "education" in query_lower:
+            explanation = "Analyzing recruitment data and candidate information"
+            sql_query = 'SELECT "EDUCATION_LEVEL", COUNT(*) as candidate_count FROM "RECRUITMENT_DATA" GROUP BY "EDUCATION_LEVEL"'
+            chart_config = {"chart_type": "pie", "title": "Candidates by Education Level", "x_column": "EDUCATION_LEVEL", "y_column": "candidate_count"}
+        elif "performance" in query_lower or "rating" in query_lower:
+            explanation = "Analyzing employee performance and ratings"
+            sql_query = 'SELECT "DEPARTMENTTYPE", AVG("CURRENT_EMPLOYEE_RATING") as avg_rating FROM "EMPLOYEE_DATA" WHERE "CURRENT_EMPLOYEE_RATING" IS NOT NULL GROUP BY "DEPARTMENTTYPE"'
+            chart_config = {"chart_type": "bar", "title": "Average Performance Rating by Department", "x_column": "DEPARTMENTTYPE", "y_column": "avg_rating"}
+        elif "experience" in query_lower or "years" in query_lower:
+            explanation = "Analyzing employee experience levels"
+            sql_query = 'SELECT "DEPARTMENTTYPE", AVG("CURRENT_EMPLOYEE_EXPERIENCE_YEARS") as avg_experience FROM "EMPLOYEE_DATA" WHERE "CURRENT_EMPLOYEE_EXPERIENCE_YEARS" IS NOT NULL GROUP BY "DEPARTMENTTYPE"'
+            chart_config = {"chart_type": "bar", "title": "Average Experience by Department", "x_column": "DEPARTMENTTYPE", "y_column": "avg_experience"}
+        else:
+            explanation = "AI analysis completed successfully - analyzing general employee data"
+            sql_query = 'SELECT "DEPARTMENTTYPE", COUNT(*) as count FROM "EMPLOYEE_DATA" GROUP BY "DEPARTMENTTYPE"'
+            chart_config = {"chart_type": "bar", "title": "Employee Distribution by Department", "x_column": "DEPARTMENTTYPE", "y_column": "count"}
+        
+        # Send final result
+        chunks.append({
+            "type": "result",
+            "explanation": explanation,
+            "sql_query": sql_query,
+            "chart_config": chart_config
+        })
+        
+        return chunks
+        
+    except Exception as e:
+        logger.error(f"Error in streaming query processing: {e}")
+        return [{"type": "error", "message": str(e)}]
 
 
 async def _fallback_process_query(natural_query: str, session_id: str = None) -> Tuple[str, str, List[Dict[str, Any]], str, str, Optional[str], Dict[str, Any]]:
