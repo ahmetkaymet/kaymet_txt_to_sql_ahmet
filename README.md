@@ -1,8 +1,19 @@
-# AImet - AI-Powered Data Analytics
+# 🚀 **AImet - AI-Powered Data Analytics**
+
+> **Developed by Ahmet ERER** | **2025 Internship Project** | **Contact: [ahmet.erer@example.com]**
 
 A modern, AI-powered application that converts natural language queries to SQL and provides intelligent data analysis with interactive visualizations.
 
-## ✨ Features
+## 👨‍💻 **Developer Information**
+- **Developer:** Ahmet ERER
+- **Project Type:** 2025 Internship Project
+- **Institution:** [Bilisim AS.]
+- **Contact:** [ahmeterer00@gmail.com]
+- **GitHub:** [ahmetererr]
+
+---
+
+## ✨ **Features**
 
 ### 🤖 **AI-Powered Natural Language Processing**
 - **LangChain Integration**: Advanced LLM pipeline for natural language to SQL conversion
@@ -26,7 +37,9 @@ A modern, AI-powered application that converts natural language queries to SQL a
 - **Duplicate Prevention**: Smart deduplication to avoid redundant queries
 - **Persistent Storage**: SQLite database for reliable data persistence
 
-## 🚀 Technology Stack
+---
+
+## 🚀 **Technology Stack**
 
 ### **Backend**
 - **Python 3.11+**: Core application logic
@@ -44,19 +57,23 @@ A modern, AI-powered application that converts natural language queries to SQL a
 - **Plotly.js**: Interactive chart rendering
 - **Vite**: Fast build tool
 
-## 📋 Prerequisites
+---
+
+## 📋 **Prerequisites**
 
 - Python 3.11 or higher
 - Node.js 18 or higher
 - OpenAI API key
 - Modern web browser
 
-## 🛠️ Installation
+---
+
+## 🛠️ **Installation**
 
 ### 1. **Clone the Repository**
 ```bash
 git clone <repository-url>
-cd kaymet_txt_to_sql_ahmet-3
+cd AImet_txt_to_sql
 ```
 
 ### 2. **Backend Setup**
@@ -160,6 +177,8 @@ cd frontend
 npm install
 ```
 
+---
+
 ## 🔑 **Required Configuration Files**
 
 ### **Environment Variables (.env)**
@@ -182,7 +201,9 @@ LOG_LEVEL=INFO
 3. Add it to your `.env` file
 4. **Never commit your .env file to version control!**
 
-## 🚀 Running the Application
+---
+
+## 🚀 **Running the Application**
 
 ### 1. **Start Backend**
 ```bash
@@ -197,11 +218,14 @@ npm run dev
 ```
 Frontend will be available at `http://localhost:3000`
 
+---
+
 ## 📁 **Project Structure**
 ```
-kaymet_txt_to_sql_ahmet-3/
+AImet_txt_to_sql/
 ├── .env                    # Environment variables (create this)
 ├── .gitignore             # Git ignore rules
+├── LICENSE                # Project license
 ├── main.py                # FastAPI application entry point
 ├── langchain_utils.py     # LangChain integration and AI logic
 ├── query_history.py       # Database operations and history management
@@ -212,6 +236,9 @@ kaymet_txt_to_sql_ahmet-3/
 │   ├── src/
 │   ├── package.json
 │   └── index.html
+├── DATA CATALOGS/        # HR data catalogs
+├── HR_DATASET_GUIDE.md   # HR data guide
+├── STREAMING_README.md   # Streaming features guide
 └── README.md             # This file
 ```
 
@@ -219,7 +246,9 @@ kaymet_txt_to_sql_ahmet-3/
 - `.env` - Your environment variables
 - `data.db` - Your actual database with your data
 
-## 💡 Usage Examples
+---
+
+## 💡 **Usage Examples**
 
 ### **Basic Query**
 ```
@@ -239,7 +268,9 @@ kaymet_txt_to_sql_ahmet-3/
 ```
 **AI Response**: "I've generated a pie chart showing the distribution of sales across 6 product categories..."
 
-## 🔧 API Endpoints
+---
+
+## 🔧 **API Endpoints**
 
 - `GET /`: API information
 - `GET /sessions`: Get all query sessions
@@ -248,7 +279,9 @@ kaymet_txt_to_sql_ahmet-3/
 - `POST /check-and-execute`: Check data availability and execute
 - `POST /chart`: Generate charts for query results
 
-## 📊 Chart Types
+---
+
+## 📊 **Chart Types**
 
 The AI automatically detects and generates the most appropriate chart type:
 
@@ -258,7 +291,9 @@ The AI automatically detects and generates the most appropriate chart type:
 - **Scatter Plots**: For correlation analysis
 - **Tables**: For detailed data display
 
-## 🎯 Key Benefits
+---
+
+## 🎯 **Key Benefits**
 
 1. **No SQL Knowledge Required**: Ask questions in plain English
 2. **AI-Powered Insights**: Get intelligent analysis of your data
@@ -266,19 +301,25 @@ The AI automatically detects and generates the most appropriate chart type:
 4. **Smart Error Handling**: AI warns about data access issues
 5. **Professional Results**: Production-ready SQL queries and explanations
 
-## 🔒 Security Features
+---
+
+## 🔒 **Security Features**
 
 - **SQL Injection Prevention**: All queries are validated and sanitized
 - **Input Validation**: Comprehensive request validation
 - **Error Handling**: Graceful error handling without exposing sensitive information
 - **Environment Variables**: Secure API key management
 
-## 📈 Performance
+---
+
+## 📈 **Performance**
 
 - **Fast Response**: Optimized LangChain pipeline
 - **Efficient Caching**: Smart query result caching
 - **Background Processing**: Non-blocking chart generation
 - **Responsive UI**: Smooth user experience
+
+---
 
 ## 🚨 **Troubleshooting**
 
@@ -313,29 +354,53 @@ The AI automatically detects and generates the most appropriate chart type:
 - Enable caching for repeated queries
 - Optimize database queries with proper indexing
 
-## 🤝 Contributing
+---
 
-1. Fork the repository
-2. Create a feature branch
-3. Make your changes
-4. Add tests if applicable
-5. Submit a pull request
+## 🤝 **Contributing**
 
-## 📄 License
+This project was developed by **Ahmet ERER** as an internship project. 
 
-This project is licensed under the MIT License.
+For any questions or contributions:
+1. Contact the original developer: [ahmet.erer@example.com]
+2. Check the documentation
+3. Review existing issues
+4. Create a new issue with detailed information
 
-## 🆘 Support
+---
+
+## 📄 **License**
+
+This project is licensed under the MIT License. See [LICENSE](LICENSE) file for details.
+
+**Important Notice:**
+This software was developed by **Ahmet ERER** as an internship project.
+Any commercial use, distribution, or modification without explicit written
+permission from the original developer is strictly prohibited.
+
+---
+
+## 🆘 **Support**
 
 For issues and questions:
 1. Check the documentation
 2. Review existing issues
-3. Create a new issue with detailed information
+3. Contact the developer: [ahmet.erer@example.com]
+4. Create a new issue with detailed information
 
 ---
 
-**Built with ❤️ using LangChain, OpenAI, and modern web technologies** 
+## 📞 **Contact Information**
 
-**Test: Bu satır contribution activity test için eklendi - $(date)**
+- **Developer:** Ahmet ERER
+- **Email:** [ahmet.erer@example.com]
+- **Project:** AImet - AI-Powered Data Analytics
+- **Type:** 2025 Internship Project
+- **Institution:** [Staj yaptığınız kurum]
 
-**Test 2: Email privacy kapatıldı, contribution activity test - $(date)** 
+---
+
+**Built with ❤️ by Ahmet ERER using LangChain, OpenAI, and modern web technologies**
+
+**Project Completion Date:** January 2025  
+**Internship Period:** [Staj süreniz]  
+**Institution:** [Staj yaptığınız kurum] 

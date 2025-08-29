@@ -1,6 +1,17 @@
 # 🎯 **HR Dataset Analytics Guide**
 
+> **Developed by Ahmet ERER** | **2025 Internship Project** | **Contact: ahmet.erer00@gmail.com**
+
 Bu proje artık HR (İnsan Kaynakları) verilerinizi analiz etmek için optimize edilmiştir!
+
+## 👨‍💻 **Developer Information**
+- **Developer:** Ahmet ERER
+- **Project Type:** 2025 Internship Project
+- **Institution:** Bilisim AS.
+- **Contact:** ahmet.erer00@gmail.com
+- **GitHub:** ahmetererr
+
+---
 
 ## 📊 **Desteklenen HR Veri Türleri:**
 
@@ -98,31 +109,3 @@ Result:
 - Chart: Bar chart showing employee count and average salary by department
 - Insights: Department size vs. compensation analysis
 ```
-
-### **Senaryo 2: Engagement Trend Analizi**
-```
-Query: "Analyze employee engagement scores by department over time"
-Result:
-- SQL: SELECT department, survey_date, AVG(engagement_score) FROM engagement_surveys GROUP BY department, survey_date ORDER BY survey_date
-- Chart: Line chart showing engagement trends by department
-- Insights: Department performance trends and improvement areas
-```
-
-### **Senaryo 3: Training Effectiveness Analysis**
-```
-Query: "Show me training completion rates by course type"
-Result:
-- SQL: SELECT course_type, COUNT(*) as total_enrolled, SUM(CASE WHEN status='completed' THEN 1 ELSE 0 END) as completed FROM training_records GROUP BY course_type
-- Chart: Bar chart showing completion rates by course type
-- Insights: Most effective training programs and areas for improvement
-```
-
-## 🎉 **Sonuç:**
-
-Artık HR verilerinizi çok daha hızlı ve anlamlı şekilde analiz edebilirsiniz! 
-
-**Performans Artışı:** %75-80 daha hızlı
-**HR Odaklı Analiz:** Özel chart türleri ve insights
-**Akıllı Öneriler:** AI destekli HR action items
-
-Başlamak için yukarıdaki örnek sorgulardan birini deneyin! 🚀
