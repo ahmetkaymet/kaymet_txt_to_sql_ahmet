@@ -888,17 +888,17 @@ function App() {
               mx="auto"
             >
               <VStack spacing={6}>
-                <VStack spacing={4} align="center">
+                <HStack spacing={4} align="center">
                   <Image
                     src="/assets/247b5df2eca666f9b7fc7d57907d4bd041dea7afba62f9f0f8b22e8e9e285702.png"
                     alt="AImet Mascot"
-                    w={24}
-                    h={24}
+                    w={32}
+                    h={32}
                   />
-                  <Heading size="lg" color="red.800" fontWeight="bold" textAlign="center">
+                  <Heading size="lg" color="red.800" fontWeight="bold">
                     Hey, I'm AImet!
                   </Heading>
-                </VStack>
+                </HStack>
                 
                 <Text fontSize="md" color="gray.600" textAlign="center">
                   How can I help you today? Ask me anything about your HR data and I'll analyze it for you.
