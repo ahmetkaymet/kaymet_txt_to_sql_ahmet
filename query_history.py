@@ -217,15 +217,15 @@ def save_query_history(session_id: str, natural_query: str, sql_query: str, quer
                 logger.info(f"Updating existing query record {existing['id']} instead of creating duplicate")
                 cursor.execute("""
                     UPDATE query_history 
-                    SET query_result = ?, explanation = ?, title = ?, chart_data = ?, chart_config = ?, username = ?, timestamp = CURRENT_TIMESTAMP
+                    SET query_result = ?, explanation = ?, title = ?, chart_data = ?, chart_config = ?, username = ?, timestamp = datetime('now', 'utc')
                     WHERE id = ?
                 """, (query_result, explanation, title, chart_data, chart_config, username, existing['id']))
             else:
                 # Insert new record
                 logger.info(f"Inserting new query record for session {session_id}")
                 cursor.execute("""
-                    INSERT INTO query_history (session_id, natural_query, sql_query, query_result, explanation, title, chart_data, chart_config, username)
-                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    INSERT INTO query_history (session_id, natural_query, sql_query, query_result, explanation, title, chart_data, chart_config, username, timestamp)
+                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, datetime('now', 'utc'))
                 """, (session_id, natural_query, sql_query, query_result, explanation, title, chart_data, chart_config, username))
             
             conn.commit()

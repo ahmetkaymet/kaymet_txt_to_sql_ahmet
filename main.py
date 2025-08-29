@@ -450,13 +450,17 @@ async def process_request_queue():
                     results = results[:100]
                     explanation += "\n(Note: Results limited to first 100 rows for better performance)"
                 
+                # Create UTC timestamp
+                utc_timestamp = datetime.datetime.utcnow().isoformat()
+                logger.info(f"Generated UTC timestamp: {utc_timestamp}")
+                
                 response = ExecuteSQLResponse(
                     explanation=explanation,
                     sql_query=sql_query,
                     results=results,
                     session_id=session_id,
                     title=title,
-                    timestamp=datetime.datetime.now().isoformat(),
+                    timestamp=utc_timestamp,
                     chart_data=chart_data,
                     chart_config=chart_config
                 )

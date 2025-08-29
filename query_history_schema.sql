@@ -49,7 +49,7 @@ CREATE TABLE IF NOT EXISTS query_history (
     natural_query TEXT NOT NULL,
     sql_query TEXT NOT NULL,
     query_result TEXT NOT NULL,
-    timestamp DATETIME DEFAULT CURRENT_TIMESTAMP
+    timestamp DATETIME DEFAULT (datetime('now', 'utc'))
 );
 
 -- Add descriptions for the columns

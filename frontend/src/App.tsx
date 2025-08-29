@@ -49,7 +49,7 @@ import {
   useDisclosure,
   useBreakpointValue
 } from '@chakra-ui/react';
-import { ViewIcon, CopyIcon, CheckIcon, HamburgerIcon, AddIcon, DeleteIcon, RepeatIcon } from '@chakra-ui/icons';
+import { ViewIcon, CopyIcon, CheckIcon, HamburgerIcon, AddIcon, DeleteIcon, RepeatIcon, TriangleUpIcon, ChevronUpIcon, ChevronDownIcon, ArrowUpIcon } from '@chakra-ui/icons';
 import axios from 'axios';
 import ReactMarkdown from 'react-markdown';
 import { Prism as SyntaxHighlighter } from 'react-syntax-highlighter';
@@ -90,6 +90,34 @@ interface HistoryItem {
 
 // API URL'ini doğru şekilde tanımla
 const API_URL = 'http://localhost:8000';
+
+// Utility function to format timestamp to Turkey time
+const formatTimestampToTurkeyTime = (timestamp: string): string => {
+  try {
+    console.log('Raw timestamp received:', timestamp);
+    const date = new Date(timestamp);
+    console.log('Parsed date:', date);
+    console.log('Date ISO string:', date.toISOString());
+    console.log('Date local string:', date.toString());
+    
+    // Alternative approach: Add 3 hours manually if timestamp is in UTC
+    // This is more reliable than timezone conversion
+    const turkeyTime = new Date(date.getTime() + (3 * 60 * 60 * 1000));
+    console.log('Turkey time (manual +3h):', turkeyTime);
+    
+    const formattedTime = turkeyTime.toLocaleTimeString('tr-TR', { 
+      hour: '2-digit', 
+      minute: '2-digit',
+      hour12: false
+    });
+    
+    console.log('Formatted time (Turkey):', formattedTime);
+    return formattedTime;
+  } catch (error) {
+    console.error('Error formatting timestamp:', error);
+    return '--:--';
+  }
+};
 
 function App() {
   const [query, setQuery] = useState('')
@@ -722,8 +750,8 @@ function App() {
         borderBottom="1px" 
         borderColor="gray.100" 
         px={4} 
-        py={3}
-        h="64px"
+        py={1}
+        h="80px"
         position="sticky"
         top={0}
         zIndex={10}
@@ -732,22 +760,23 @@ function App() {
         boxShadow="0 1px 3px rgba(0, 0, 0, 0.05)"
       >
         <Container maxW="7xl">
-          <HStack justify="space-between" align="center" h="full">
-            <HStack spacing={3} align="center">
-              <Image
-                src="/assets/BilişimAI logo-Photoroom.png"
-                alt="BilişimAI Logo"
-                h="48px"
-                w="auto"
-                objectFit="contain"
-                cursor="pointer"
-                onClick={handleNewChat}
-                _hover={{ transform: "scale(1.02)" }}
-                transition="transform 0.2s"
-              />
-            </HStack>
+                      <HStack justify="space-between" align="flex-start">
+                            <HStack spacing={0} align="flex-start" ml={-10} pt={0} mt={-2}>
+                <Image
+                  src="/assets/BilişimAI logo-Photoroom.png"
+                  alt="BilişimAI Logo"
+                  h="72px"
+                  w="auto"
+                  objectFit="contain"
+                  cursor="pointer"
+                  onClick={handleNewChat}
+                  _hover={{ transform: "scale(1.02)" }}
+                  transition="transform 0.2s"
+                  mt={0}
+                />
+              </HStack>
             
-            <HStack spacing={3} align="center">
+            <HStack spacing={3} align="center" mt={4}>
               {/* Mobile menu button */}
               {!isDesktop && (
                 <IconButton
@@ -784,7 +813,7 @@ function App() {
       </Box>
 
       {/* Main Layout with Sidebar */}
-      <Flex h="calc(100vh - 60px)">
+      <Flex h="calc(100vh - 80px)">
         {/* Desktop Sidebar */}
         {isDesktop && (
           <Box
@@ -801,6 +830,15 @@ function App() {
               // Collapsed sidebar
               <VStack spacing={4} py={4} align="center">
                 <IconButton
+                  aria-label="Toggle sidebar"
+                  icon={<HamburgerIcon />}
+                  onClick={() => setSidebarCollapsed(false)}
+                  variant="ghost"
+                  size="sm"
+                  colorScheme="gray"
+                  _hover={{ bg: "gray.100" }}
+                />
+                <IconButton
                   aria-label="New Chat"
                   icon={<AddIcon />}
                   onClick={handleNewChat}
@@ -808,14 +846,6 @@ function App() {
                   size="sm"
                   colorScheme="gray"
                   _hover={{ bg: "gray.100" }}
-                />
-                <IconButton
-                  aria-label="Expand sidebar"
-                  icon={<ViewIcon />}
-                  onClick={() => setSidebarCollapsed(false)}
-                  variant="ghost"
-                  size="sm"
-                  colorScheme="gray"
                 />
               </VStack>
             ) : (
@@ -830,9 +860,20 @@ function App() {
                   borderColor="gray.100"
                 >
                   <HStack justify="space-between" align="center">
-                    <Text fontSize="lg" fontWeight="medium" color="gray.800">
-                      Chat History
-                    </Text>
+                    <HStack spacing={2} align="center">
+                      <IconButton
+                        aria-label="Toggle sidebar"
+                        icon={<HamburgerIcon />}
+                        size="sm"
+                        variant="ghost"
+                        colorScheme="gray"
+                        onClick={() => setSidebarCollapsed(!sidebarCollapsed)}
+                        _hover={{ bg: "gray.100" }}
+                      />
+                      <Text fontSize="lg" fontWeight="medium" color="gray.800">
+                        Chat History
+                      </Text>
+                    </HStack>
                     <HStack spacing={2}>
                       <IconButton
                         aria-label="New Chat"
@@ -842,14 +883,6 @@ function App() {
                         size="sm"
                         colorScheme="gray"
                         _hover={{ bg: "gray.100" }}
-                      />
-                      <IconButton
-                        aria-label="Toggle sidebar"
-                        icon={<HamburgerIcon />}
-                        onClick={() => setSidebarCollapsed(!sidebarCollapsed)}
-                        variant="ghost"
-                        size="sm"
-                        colorScheme="gray"
                       />
                     </HStack>
                   </HStack>
@@ -883,11 +916,11 @@ function App() {
                             </Text>
                             
                             {/* Queries in this date group */}
-                            <VStack spacing={0} align="stretch">
+                            <VStack spacing={1} align="stretch">
                               {queries.map((item, index) => (
-                                <Box
+                                                                <Box
                                   key={`${item.id}-${index}`}
-                                  py={3}
+                                  py={2}
                                   px={2}
                                   bg="transparent"
                                   cursor="pointer"
@@ -899,7 +932,7 @@ function App() {
                                     bg: "gray.50",
                                   }}
                                   transition="all 0.2s"
-                                                                    borderBottom="1px"
+                                  borderBottom="1px"
                                   borderColor="gray.100"
                                   position="relative"
                                 >
@@ -910,15 +943,9 @@ function App() {
                                       </Text>
                                       <HStack spacing={2} justify="space-between" w="full">
                                         <Text fontSize="xs" color="gray.500">
-                                          {new Date(item.queries[0].timestamp).toLocaleTimeString('tr-TR', { 
-                                            hour: '2-digit', 
-                                            minute: '2-digit',
-                                            hour12: false
-                                          })}
+                                          {formatTimestampToTurkeyTime(item.queries[0].timestamp)}
                                         </Text>
-                                        {item.queries[0].chart_data && (
-                                          <Icon as={RepeatIcon} color="gray.500" boxSize={3} />
-                                        )}
+
                                       </HStack>
                                     </VStack>
                                     
@@ -1498,7 +1525,7 @@ function App() {
                 }}
                 transition="all 0.2s"
               >
-                Execute
+                <Icon as={ArrowUpIcon} />
               </Button>
             </HStack>
           </Container>
@@ -1545,11 +1572,11 @@ function App() {
                       </Text>
                       
                       {/* Queries in this date group */}
-                      <VStack spacing={0} align="stretch">
+                      <VStack spacing={1} align="stretch">
                         {queries.map((item, index) => (
                           <Box
                             key={`${item.id}-${index}`}
-                            py={3}
+                            py={2}
                             px={2}
                             bg="transparent"
                             cursor="pointer"
@@ -1573,15 +1600,9 @@ function App() {
                                 </Text>
                                 <HStack spacing={2} justify="space-between" w="full">
                                   <Text fontSize="xs" color="gray.500">
-                                    {new Date(item.queries[0].timestamp).toLocaleTimeString('tr-TR', { 
-                                      hour: '2-digit', 
-                                      minute: '2-digit',
-                                      hour12: false
-                                    })}
+                                    {formatTimestampToTurkeyTime(item.queries[0].timestamp)}
                                   </Text>
-                                  {item.queries[0].chart_data && (
-                                    <Icon as={RepeatIcon} color="gray.500" boxSize={3} />
-                                  )}
+
                                 </HStack>
                               </VStack>
                               
