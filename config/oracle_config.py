@@ -14,27 +14,44 @@ class OracleConnectionPool:
     def __init__(self, pool_size=20):  # Increased from 10 to 20 - 2x faster
         # Enable thin mode
         oracledb.thin = True
-        self.tns_admin = os.getenv("TNS_ADMIN")
-        self.wallet_location = self.tns_admin
         self.pool = None
         self.pool_size = pool_size
         self._initialize_pool()
     
     def _initialize_pool(self):
-        """Initialize the connection pool"""
+        """Initialize the connection pool with static IP only (no cloud wallet)"""
         try:
+            # Statik IP ile bağlantı için özel DSN oluştur
+            static_ip = os.getenv("ORACLE_STATIC_IP")
+            port = os.getenv("ORACLE_PORT", "1521")
+            service_name = os.getenv("ORACLE_SERVICE_NAME")
+            sid = os.getenv("ORACLE_SID")
+            
+            if not static_ip:
+                raise ValueError("ORACLE_STATIC_IP environment variable tanımlanmamış! Cloud wallet kullanılamaz.")
+            
+            if not service_name and not sid:
+                raise ValueError("ORACLE_SERVICE_NAME veya ORACLE_SID environment variable'ı tanımlanmamış!")
+            
+            # Statik IP ile özel DSN oluştur
+            if service_name:
+                custom_dsn = f"(description=(retry_count=20)(retry_delay=3)(address=(protocol=tcp)(port={port})(host={static_ip}))(connect_data=(service_name={service_name})))"
+            else:
+                custom_dsn = f"(description=(retry_count=20)(retry_delay=3)(address=(protocol=tcp)(port={port})(host={static_ip}))(connect_data=(sid={sid})))"
+            
+            logger.info(f"Using static IP connection: {static_ip}:{port}")
+            
             self.pool = oracledb.create_pool(
                 user=os.getenv("ORACLE_USER"),
                 password=os.getenv("ORACLE_PASSWORD"),
-                dsn=os.getenv("ORACLE_DSN"),
+                dsn=custom_dsn,
                 min=5,  # Increased from 2 to 5 - faster startup
                 max=self.pool_size, 
                 increment=2,  # Increased from 1 to 2 - faster scaling
-                config_dir=self.tns_admin,
-                wallet_location=self.wallet_location,
-                wallet_password=os.getenv("WALLET_PASSWORD")
+                # Cloud wallet ayarları tamamen kaldırıldı - sadece statik IP
             )
-            logger.info(f"Oracle connection pool initialized with size {self.pool_size}")
+            logger.info(f"Oracle connection pool initialized with static IP {static_ip}:{port}")
+                
         except Exception as e:
             logger.error(f"Failed to initialize connection pool: {e}")
             raise
@@ -89,26 +106,45 @@ class OracleConnection:
     def __init__(self):
         # Enable thin mode
         oracledb.thin = True
-        self.tns_admin = os.getenv("TNS_ADMIN")
-        self.wallet_location = self.tns_admin
         self.connection = None
 
     def connect(self):
         try:
             if not self.connection:
+                # Statik IP ile bağlantı kontrolü
+                static_ip = os.getenv("ORACLE_STATIC_IP")
+                port = os.getenv("ORACLE_PORT", "1521")
+                service_name = os.getenv("ORACLE_SERVICE_NAME")
+                sid = os.getenv("ORACLE_SID")
+                
+                if not static_ip:
+                    raise ValueError("ORACLE_STATIC_IP environment variable tanımlanmamış! Cloud wallet kullanılamaz.")
+                
+                if not service_name and not sid:
+                    raise ValueError("ORACLE_SERVICE_NAME veya ORACLE_SID environment variable'ı tanımlanmamış!")
+                
+                # Statik IP ile özel DSN oluştur
+                if service_name:
+                    custom_dsn = f"(description=(retry_count=20)(retry_delay=3)(address=(protocol=tcp)(port={port})(host={static_ip}))(connect_data=(service_name={service_name})))"
+                else:
+                    custom_dsn = f"(description=(retry_count=20)(retry_delay=3)(address=(protocol=tcp)(port={port})(host={static_ip}))(connect_data=(sid={sid})))"
+                
+                logger.info(f"Connecting directly to {static_ip}:{port}")
+                
                 self.connection = oracledb.connect(
                     user=os.getenv("ORACLE_USER"),
                     password=os.getenv("ORACLE_PASSWORD"),
-                    dsn=os.getenv("ORACLE_DSN"),
-                    config_dir=self.tns_admin,
-                    wallet_location=self.wallet_location,
-                    wallet_password=os.getenv("WALLET_PASSWORD")
+                    dsn=custom_dsn
+                    # Cloud wallet ayarları tamamen kaldırıldı - sadece statik IP
                 )
+                logger.info(f"Direct connection successful to {static_ip}:{port}")
+                    
             return self.connection
         except oracledb.Error as e:
             logger.error(f"Oracle connection error: {e}")
-            logger.error(f"TNS_ADMIN: {self.tns_admin}")
-            logger.error(f"Wallet location: {self.wallet_location}")
+            raise
+        except Exception as e:
+            logger.error(f"Connection error: {e}")
             raise
 
     def close(self):
