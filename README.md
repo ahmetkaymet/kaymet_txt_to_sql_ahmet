@@ -1,6 +1,6 @@
 # 🚀 **AImet - AI-Powered Data Analytics**
 
-> **Developed by Ahmet ERER** | **2025 Internship Project** | **Contact: [ahmet.erer@example.com]**
+> **Developed by Ahmet ERER** | **2025 Internship Project** | **Contact: [ahmeterer00@gmail.com]**
 
 A modern, AI-powered application that converts natural language queries to SQL and provides intelligent data analysis with interactive visualizations.
 
@@ -384,7 +384,7 @@ permission from the original developer is strictly prohibited.
 For issues and questions:
 1. Check the documentation
 2. Review existing issues
-3. Contact the developer: [ahmet.erer@example.com]
+3. Contact the developer: [ahmeterer00@gmail.com]
 4. Create a new issue with detailed information
 
 ---
@@ -392,15 +392,14 @@ For issues and questions:
 ## 📞 **Contact Information**
 
 - **Developer:** Ahmet ERER
-- **Email:** [ahmet.erer@example.com]
+- **Email:** [ahmeterer00@gmail.com]
 - **Project:** AImet - AI-Powered Data Analytics
 - **Type:** 2025 Internship Project
-- **Institution:** [Staj yaptığınız kurum]
+
 
 ---
 
 **Built with ❤️ by Ahmet ERER using LangChain, OpenAI, and modern web technologies**
 
-**Project Completion Date:** January 2025  
-**Internship Period:** [Staj süreniz]  
-**Institution:** [Staj yaptığınız kurum] 
+**Project Completion Date:** Aug2025  
+
