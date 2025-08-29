@@ -92,84 +92,33 @@ export OPENAI_API_KEY="your-api-key-here"
 
 ### 3. **Database Setup**
 ```bash
-# IMPORTANT: You need to create and populate your own database!
-# The application will NOT automatically create sample data.
+# IMPORTANT: You need to configure Oracle Database connection!
+# The application uses Oracle Database with static IP connection.
 
-# Option 1: Create database manually
-python -c "
-import sqlite3
-conn = sqlite3.connect('data.db')
-cursor = conn.cursor()
+# 1. Create .env file from .env.example
+cp .env.example .env
 
-# Create your tables (example structure)
-cursor.execute('''
-    CREATE TABLE IF NOT EXISTS Stores (
-        StoreID INTEGER PRIMARY KEY,
-        StoreName TEXT NOT NULL,
-        State TEXT NOT NULL,
-        City TEXT NOT NULL,
-        ZipCode TEXT,
-        Address TEXT
-    )
-''')
-
-cursor.execute('''
-    CREATE TABLE IF NOT EXISTS Products (
-        ProductID INTEGER PRIMARY KEY,
-        ProductName TEXT NOT NULL,
-        Category TEXT,
-        Price REAL NOT NULL
-    )
-''')
-
-cursor.execute('''
-    CREATE TABLE IF NOT EXISTS Transactions (
-        TransactionID INTEGER PRIMARY KEY,
-        StoreID INTEGER,
-        ProductID INTEGER,
-        Quantity INTEGER,
-        PricePerQuantity REAL,
-        TransactionDate DATE,
-        FOREIGN KEY (StoreID) REFERENCES Stores (StoreID),
-        FOREIGN KEY (ProductID) REFERENCES Products (ProductID)
-    )
-''')
-
-# Insert sample data (optional)
-cursor.execute('''
-    INSERT OR IGNORE INTO Stores (StoreID, StoreName, State, City, ZipCode, Address) VALUES
-    (1, 'Downtown Store', 'NY', 'New York', '10001', '123 Main St'),
-    (2, 'Uptown Store', 'NY', 'New York', '10002', '456 Oak Ave'),
-    (3, 'Westside Store', 'CA', 'Los Angeles', '90210', '789 Sunset Blvd')
-''')
-
-cursor.execute('''
-    INSERT OR IGNORE INTO Products (ProductID, ProductName, Category, Price) VALUES
-    (1, 'Laptop', 'Electronics', 999.99),
-    (2, 'Smartphone', 'Electronics', 699.99),
-    (3, 'Coffee Mug', 'Home', 19.99)
-''')
-
-cursor.execute('''
-    INSERT OR IGNORE INTO Transactions (TransactionID, StoreID, ProductID, Quantity, PricePerQuantity, TransactionDate) VALUES
-    (1, 1, 1, 2, 999.99, '2024-01-15'),
-    (2, 2, 2, 1, 699.99, '2024-01-16'),
-    (3, 3, 3, 5, 19.99, '2024-01-17')
-''')
-
-conn.commit()
-conn.close()
-print('Database created successfully with sample data!')
-"
-
-# Option 2: Import from existing SQL file
-# sqlite3 data.db < your_data.sql
-
-# Option 3: Use your own database
-# Just place your existing database file as 'data.db' in the project root
+# 2. Edit .env file with your Oracle database credentials
+nano .env
 ```
 
-**Note**: The `query_history.db` file will be created automatically for storing query history, but you must provide your own `data.db` with your actual data!
+**Required Environment Variables:**
+```env
+# Oracle Database Credentials
+ORACLE_USER=your_username
+ORACLE_PASSWORD=your_password
+
+# Static IP Configuration (REQUIRED )
+ORACLE_STATIC_IP=192.168.1.100
+ORACLE_PORT=1521
+
+# Database Identifier (Service Name OR SID - use only one)
+ORACLE_SERVICE_NAME=ORCL
+# OR
+# ORACLE_SID=ORCL
+```
+
+**Note**: The `query_history.db` file will be created automatically for storing query history. You must configure your Oracle database connection in the `.env` file!
 
 ### 4. **Frontend Setup**
 ```bash
@@ -186,14 +135,21 @@ npm install
 # Required: OpenAI API Key
 OPENAI_API_KEY=sk-your-openai-api-key-here
 
+# Required: Oracle Database Configuration
+ORACLE_USER=your_username
+ORACLE_PASSWORD=your_password
+ORACLE_STATIC_IP=192.168.1.100
+ORACLE_PORT=1521
+ORACLE_SERVICE_NAME=ORCL
+
 # Optional: Custom configurations
 OPENAI_MODEL=gpt-4o
 LOG_LEVEL=INFO
 ```
 
 ### **Database Files**
-- `data.db` - Main application database (auto-created)
 - `query_history.db` - Query history database (auto-created)
+- Oracle Database - Main application database (configured via .env)
 
 ### **API Key Setup**
 1. Go to [OpenAI Platform](https://platform.openai.com/api-keys)
@@ -205,7 +161,13 @@ LOG_LEVEL=INFO
 
 ## 🚀 **Running the Application**
 
-### 1. **Start Backend**
+### 1. **Test Database Connection**
+```bash
+# Test Oracle database connection
+python test_oracle_connection.py
+```
+
+### 2. **Start Backend**
 ```bash
 python main.py
 ```
@@ -230,7 +192,7 @@ AImet_txt_to_sql/
 ├── langchain_utils.py     # LangChain integration and AI logic
 ├── query_history.py       # Database operations and history management
 ├── requirements.txt       # Python dependencies
-├── data.db               # YOUR database with your data (create this!)
+├── .env.example          # Environment variables template
 ├── query_history.db      # Query history database (auto-created)
 ├── frontend/             # React frontend application
 │   ├── src/
@@ -243,8 +205,8 @@ AImet_txt_to_sql/
 ```
 
 **Important Files to Create:**
-- `.env` - Your environment variables
-- `data.db` - Your actual database with your data
+- `.env` - Your environment variables (copy from .env.example)
+- Oracle Database connection configuration
 
 ---
 
@@ -272,9 +234,11 @@ AImet_txt_to_sql/
 
 ## 🔧 **API Endpoints**
 
-- `GET /`: API information
+- `GET /`: API information and endpoint list
 - `GET /sessions`: Get all query sessions
+- `GET /test-cors`: Test CORS configuration
 - `POST /generate-sql`: Generate SQL from natural language
+- `POST /generate-sql-stream`: Generate SQL with streaming response
 - `POST /execute-sql`: Execute natural language query
 - `POST /check-and-execute`: Check data availability and execute
 - `POST /chart`: Generate charts for query results
@@ -361,7 +325,7 @@ The AI automatically detects and generates the most appropriate chart type:
 This project was developed by **Ahmet ERER** as an internship project. 
 
 For any questions or contributions:
-1. Contact the original developer: [ahmet.erer@example.com]
+1. Contact the original developer: [ahmeterer00@gmail.com]
 2. Check the documentation
 3. Review existing issues
 4. Create a new issue with detailed information
