@@ -49,7 +49,7 @@ import {
   useDisclosure,
   useBreakpointValue
 } from '@chakra-ui/react';
-import { ViewIcon, CopyIcon, CheckIcon, HamburgerIcon, AddIcon } from '@chakra-ui/icons';
+import { ViewIcon, CopyIcon, CheckIcon, HamburgerIcon, AddIcon, DeleteIcon, RepeatIcon } from '@chakra-ui/icons';
 import axios from 'axios';
 import ReactMarkdown from 'react-markdown';
 import { Prism as SyntaxHighlighter } from 'react-syntax-highlighter';
@@ -63,6 +63,7 @@ declare global {
 }
 
 interface QueryResult {
+  id?: string
   natural_query: string
   sql_query: string
   explanation: string
@@ -468,7 +469,7 @@ function App() {
         <Box textAlign="center" py={8}>
           <Text color="gray.500" mb={4}>No chart available for this data</Text>
           <Button 
-            colorScheme="blue" 
+            colorScheme="gray" 
             onClick={generateChart}
             leftIcon={<ViewIcon />}
             isLoading={result?.chart_generating}
@@ -600,7 +601,7 @@ function App() {
           <Box textAlign="center" py={8}>
             <Text color="red.500" mb={4}>Error rendering chart</Text>
             <Button 
-              colorScheme="blue" 
+              colorScheme="gray" 
               onClick={generateChart}
               leftIcon={<ViewIcon />}
             >
@@ -641,6 +642,77 @@ function App() {
     }
   }, [result?.chart_data]);
 
+  const deleteQuery = async (sessionId: string, queryId: string) => {
+    try {
+      // Backend'de silme endpoint'i yoksa, sadece frontend'den kaldır
+      setHistory(prev => prev.map(session => {
+        if (session.id === sessionId) {
+          return {
+            ...session,
+            queries: session.queries.filter(q => q.id !== queryId)
+          };
+        }
+        return session;
+      }).filter(session => session.queries.length > 0));
+      
+      toast({
+        title: "Query deleted",
+        description: "Query has been removed from history",
+        status: "success",
+        duration: 2000,
+        isClosable: true,
+      });
+    } catch (error) {
+      toast({
+        title: "Error",
+        description: "Failed to delete query",
+        status: "error",
+        duration: 3000,
+        isClosable: true,
+      });
+    }
+  };
+
+  const groupHistoryByDate = (history: HistoryItem[]) => {
+    const today = new Date();
+    today.setHours(0, 0, 0, 0); // Start of today
+    
+    const yesterday = new Date(today);
+    yesterday.setDate(yesterday.getDate() - 1);
+    
+    const groups: { [key: string]: HistoryItem[] } = {
+      'Today': [],
+      'Yesterday': [],
+      'This Week': [],
+      'This Month': [],
+      'Older': []
+    };
+    
+    history.forEach(session => {
+      session.queries.forEach(query => {
+        const queryDate = new Date(query.timestamp);
+        queryDate.setHours(0, 0, 0, 0); // Start of query date
+        
+        const diffTime = today.getTime() - queryDate.getTime();
+        const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
+        
+        if (diffDays === 0) {
+          groups['Today'].push({ ...session, queries: [query] });
+        } else if (diffDays === 1) {
+          groups['Yesterday'].push({ ...session, queries: [query] });
+        } else if (diffDays <= 7) {
+          groups['This Week'].push({ ...session, queries: [query] });
+        } else if (diffDays <= 30) {
+          groups['This Month'].push({ ...session, queries: [query] });
+        } else {
+          groups['Older'].push({ ...session, queries: [query] });
+        }
+      });
+    });
+    
+    return groups;
+  };
+
   
 
   return (
@@ -648,15 +720,16 @@ function App() {
       {/* Modern Header */}
       <Box 
         borderBottom="1px" 
-        borderColor="gray.200" 
+        borderColor="gray.100" 
         px={4} 
-        py={2}
-        h="60px"
+        py={3}
+        h="64px"
         position="sticky"
         top={0}
         zIndex={10}
-        backdropFilter="blur(10px)"
+        backdropFilter="blur(20px)"
         bg="rgba(255, 255, 255, 0.95)"
+        boxShadow="0 1px 3px rgba(0, 0, 0, 0.05)"
       >
         <Container maxW="7xl">
           <HStack justify="space-between" align="center" h="full">
@@ -664,14 +737,12 @@ function App() {
               <Image
                 src="/assets/BilişimAI logo-Photoroom.png"
                 alt="BilişimAI Logo"
-                h="72px"
+                h="48px"
                 w="auto"
                 objectFit="contain"
-                ml={-6}
-                mt={-2}
                 cursor="pointer"
                 onClick={handleNewChat}
-                _hover={{ transform: "scale(1.05)" }}
+                _hover={{ transform: "scale(1.02)" }}
                 transition="transform 0.2s"
               />
             </HStack>
@@ -685,6 +756,7 @@ function App() {
                   onClick={() => setSidebarOpen(true)}
                   variant="ghost"
                   size="sm"
+                  color="gray.600"
                 />
               )}
               
@@ -693,17 +765,16 @@ function App() {
                 w={8}
                 h={8}
                 borderRadius="full"
-                bg="red.600"
+                bg="gray.100"
                 display="flex"
                 alignItems="center"
                 justifyContent="center"
-                color="white"
+                color="gray.600"
                 fontSize="sm"
-                fontWeight="bold"
+                fontWeight="medium"
                 cursor="pointer"
-                _hover={{ bg: "red.700" }}
+                _hover={{ bg: "gray.200" }}
                 transition="all 0.2s"
-                mt={-1}
               >
                 AE
               </Box>
@@ -720,11 +791,11 @@ function App() {
             w={sidebarCollapsed ? "60px" : "320px"}
             bg="white"
             borderRight="1px"
-            borderColor="gray.200"
+            borderColor="gray.100"
             transition="width 0.3s ease"
             overflow="hidden"
             position="relative"
-            boxShadow="2px 0 10px rgba(0, 0, 0, 0.1)"
+            boxShadow="0 2px 8px rgba(0, 0, 0, 0.04)"
           >
             {sidebarCollapsed ? (
               // Collapsed sidebar
@@ -735,8 +806,8 @@ function App() {
                   onClick={handleNewChat}
                   variant="ghost"
                   size="sm"
-                  colorScheme="red"
-                  _hover={{ bg: "red.50" }}
+                  colorScheme="gray"
+                  _hover={{ bg: "gray.100" }}
                 />
                 <IconButton
                   aria-label="Expand sidebar"
@@ -756,10 +827,10 @@ function App() {
                   px={6} 
                   py={4} 
                   borderBottom="1px" 
-                  borderColor="gray.200"
+                  borderColor="gray.100"
                 >
                   <HStack justify="space-between" align="center">
-                    <Text fontSize="lg" fontWeight="semibold" color="gray.800">
+                    <Text fontSize="lg" fontWeight="medium" color="gray.800">
                       Chat History
                     </Text>
                     <HStack spacing={2}>
@@ -769,8 +840,8 @@ function App() {
                         onClick={handleNewChat}
                         variant="ghost"
                         size="sm"
-                        colorScheme="red"
-                        _hover={{ bg: "red.50" }}
+                        colorScheme="gray"
+                        _hover={{ bg: "gray.100" }}
                       />
                       <IconButton
                         aria-label="Toggle sidebar"
@@ -792,46 +863,90 @@ function App() {
                       <Text fontSize="sm" color="gray.600">Loading history...</Text>
                     </VStack>
                   ) : history.length > 0 ? (
-                    <VStack spacing={2} align="stretch">
-                      {history.flatMap(session => 
-                        session.queries.map((item, index) => (
-                          <Box
-                            key={`${session.id}-${index}`}
-                            p={4}
-                            bg={result?.session_id === item.session_id ? 'red.50' : 'white'}
-                            borderRadius="xl"
-                            cursor="pointer"
-                            onClick={() => {
-                              console.log('History item clicked:', item);
-                              loadQueryFromHistory(item);
-                            }}
-                            _hover={{ 
-                              bg: result?.session_id === item.session_id ? 'red.100' : 'gray.50',
-                              transform: 'translateY(-1px)',
-                              boxShadow: '0 4px 12px rgba(0, 0, 0, 0.1)'
-                            }}
-                            transition="all 0.2s"
-                            border="1px"
-                            borderColor={result?.session_id === item.session_id ? 'red.200' : 'gray.200'}
-                          >
-                            <VStack spacing={3} align="start">
-                              <Text fontSize="sm" fontWeight="medium" color="gray.800" noOfLines={2}>
-                                {item.natural_query}
-                              </Text>
-                              <HStack spacing={2} justify="space-between" w="full">
-                                <Text fontSize="xs" color="gray.500">
-                                  {new Date(item.timestamp).toLocaleDateString()}
-                                </Text>
-                                {item.chart_data && (
-                                  <Badge colorScheme="green" fontSize="xs" borderRadius="full" px={2} py={1}>
-                                    Chart
-                                  </Badge>
-                                )}
-                              </HStack>
+                    <VStack spacing={4} align="stretch">
+                      {Object.entries(groupHistoryByDate(history)).map(([dateGroup, queries]) => {
+                        if (queries.length === 0) return null;
+                        
+                        return (
+                          <Box key={dateGroup}>
+                            {/* Date Group Header */}
+                            <Text 
+                              fontSize="xs" 
+                              fontWeight="bold" 
+                              color="gray.500" 
+                              textTransform="uppercase" 
+                              letterSpacing="wide"
+                              mb={3}
+                              px={2}
+                            >
+                              {dateGroup}
+                            </Text>
+                            
+                            {/* Queries in this date group */}
+                            <VStack spacing={0} align="stretch">
+                              {queries.map((item, index) => (
+                                <Box
+                                  key={`${item.id}-${index}`}
+                                  py={3}
+                                  px={2}
+                                  bg="transparent"
+                                  cursor="pointer"
+                                  onClick={() => {
+                                    console.log('History item clicked:', item.queries[0]);
+                                    loadQueryFromHistory(item.queries[0]);
+                                  }}
+                                  _hover={{ 
+                                    bg: "gray.50",
+                                  }}
+                                  transition="all 0.2s"
+                                                                    borderBottom="1px"
+                                  borderColor="gray.100"
+                                  position="relative"
+                                >
+                                  <HStack spacing={3} align="center" justify="space-between">
+                                    <VStack spacing={1} align="start" flex={1}>
+                                      <Text fontSize="sm" fontWeight="medium" color="gray.800" noOfLines={2}>
+                                        {item.queries[0].natural_query}
+                                      </Text>
+                                      <HStack spacing={2} justify="space-between" w="full">
+                                        <Text fontSize="xs" color="gray.500">
+                                          {new Date(item.queries[0].timestamp).toLocaleTimeString('tr-TR', { 
+                                            hour: '2-digit', 
+                                            minute: '2-digit',
+                                            hour12: false
+                                          })}
+                                        </Text>
+                                        {item.queries[0].chart_data && (
+                                          <Icon as={RepeatIcon} color="gray.500" boxSize={3} />
+                                        )}
+                                      </HStack>
+                                    </VStack>
+                                    
+                                    {/* Delete Button */}
+                                    <IconButton
+                                      aria-label="Delete query"
+                                      icon={<DeleteIcon />}
+                                      size="xs"
+                                      variant="ghost"
+                                      colorScheme="gray"
+                                      opacity={0}
+                                      _groupHover={{ opacity: 1 }}
+                                      onClick={(e) => {
+                                        e.stopPropagation();
+                                        if (item.id && item.queries[0].id) {
+                                          deleteQuery(item.id, item.queries[0].id);
+                                        }
+                                      }}
+                                      _hover={{ bg: "gray.100" }}
+                                    />
+                                  </HStack>
+                                  
+                                </Box>
+                              ))}
                             </VStack>
                           </Box>
-                        ))
-                      )}
+                        );
+                      })}
                     </VStack>
                   ) : (
                     <Box textAlign="center" py={8}>
@@ -851,20 +966,20 @@ function App() {
 
         {/* Main Content Area */}
         <Box flex={1} overflowY="auto" pb="100px">
-          <Container maxW="6xl" py={8}>
-        <VStack spacing={8} align="stretch">
+          <Container maxW="6xl" py={6}>
+        <VStack spacing={6} align="stretch">
 
           {/* Error Display */}
           {error && (
             <Box
               bg="red.50"
-              borderRadius="2xl"
+              borderRadius="xl"
               p={6}
               border="1px"
               borderColor="red.200"
               mb={6}
             >
-              <Alert status="error" borderRadius="xl">
+              <Alert status="error" borderRadius="lg">
                 <AlertIcon />
                 <Box>
                   <AlertTitle>Error!</AlertTitle>
@@ -878,10 +993,10 @@ function App() {
           {!result && !loading && (
             <Box
               bg="white"
-              borderRadius="2xl"
+              borderRadius="xl"
               p={8}
               textAlign="center"
-              boxShadow="0 4px 20px rgba(0, 0, 0, 0.08)"
+              boxShadow="0 2px 12px rgba(0, 0, 0, 0.04)"
               border="1px"
               borderColor="gray.100"
               maxW="2xl"
@@ -892,10 +1007,10 @@ function App() {
                   <Image
                     src="/assets/247b5df2eca666f9b7fc7d57907d4bd041dea7afba62f9f0f8b22e8e9e285702.png"
                     alt="AImet Mascot"
-                    w={32}
-                    h={32}
+                    w={24}
+                    h={24}
                   />
-                  <Heading size="lg" color="red.800" fontWeight="bold">
+                  <Heading size="lg" color="gray.800" fontWeight="medium">
                     Hey, I'm AImet!
                   </Heading>
                 </HStack>
@@ -924,12 +1039,12 @@ function App() {
                         w="full"
                         justifyContent="flex-start"
                         textAlign="left"
-                        colorScheme="red"
-                        borderColor="red.200"
+                        colorScheme="gray"
+                        borderColor="gray.200"
                         color="gray.700"
                         _hover={{
-                          bg: "red.50",
-                          borderColor: "red.300",
+                          bg: "gray.50",
+                          borderColor: "gray.300",
                           transform: "translateY(-1px)"
                         }}
                         onClick={() => setQuery(example)}
@@ -948,17 +1063,17 @@ function App() {
           {loading && (
             <Box
               bg="white"
-              borderRadius="2xl"
+              borderRadius="xl"
               p={12}
               textAlign="center"
-              boxShadow="0 4px 20px rgba(0, 0, 0, 0.08)"
+              boxShadow="0 2px 12px rgba(0, 0, 0, 0.04)"
               border="1px"
               borderColor="gray.100"
             >
               <VStack spacing={6}>
-                <Spinner size="xl" color="red.500" thickness="4px" />
+                <Spinner size="xl" color="gray.500" thickness="3px" />
                 <VStack spacing={2}>
-                  <Text fontSize="xl" fontWeight="semibold" color="gray.800">
+                  <Text fontSize="xl" fontWeight="medium" color="gray.800">
                     Analyzing your query with AI
                   </Text>
                   <Text fontSize="sm" color="gray.600">
@@ -968,8 +1083,6 @@ function App() {
               </VStack>
             </Box>
           )}
-
-
 
           {/* Live Streaming Chat Steps */}
           {isStreaming && chatSteps.length > 0 && (
@@ -988,10 +1101,10 @@ function App() {
                     p={4}
                     borderRadius="2xl"
                     border="1px"
-                    borderColor="gray.200"
-                    boxShadow="0 2px 8px rgba(0, 0, 0, 0.08)"
+                    borderColor="gray.100"
+                    boxShadow="0 1px 3px rgba(0, 0, 0, 0.05)"
                     transition="all 0.2s ease"
-                    _hover={{ transform: 'translateY(-1px)', boxShadow: '0 4px 12px rgba(0, 0, 0, 0.12)' }}
+                    _hover={{ transform: 'translateY(-1px)', boxShadow: '0 2px 8px rgba(0, 0, 0, 0.08)' }}
                   >
                     <HStack spacing={3} mb={3} align="center">
                       <Image
@@ -1003,14 +1116,14 @@ function App() {
                         objectFit="cover"
                         flexShrink={0}
                       />
-                                              <Text fontSize="sm" fontWeight="medium" color="gray.700" textTransform="uppercase" letterSpacing="wide">
-                          {step.type === 'explanation' && 'Analysis'}
-                          {step.type === 'sql' && 'SQL Query'}
-                          {step.type === 'results' && 'Data'}
-                          {step.type === 'chart' && 'Chart'}
-                        </Text>
+                      <Text fontSize="sm" fontWeight="medium" color="gray.700" textTransform="uppercase" letterSpacing="wide">
+                        {step.type === 'explanation' && 'Analysis'}
+                        {step.type === 'sql' && 'SQL Query'}
+                        {step.type === 'results' && 'Data'}
+                        {step.type === 'chart' && 'Chart'}
+                      </Text>
                       {step.status === 'loading' && (
-                        <Spinner size="sm" color="red.500" />
+                        <Spinner size="sm" color="gray.500" />
                       )}
                       {step.status === 'complete' && (
                         <Icon as={CheckIcon} color="green.500" boxSize={4} />
@@ -1018,7 +1131,7 @@ function App() {
                     </HStack>
                     
                     {step.type === 'explanation' && (
-                      <Text color="gray.700" fontSize="md" lineHeight="1.5">
+                      <Text color="gray.700" fontSize="md" lineHeight="1.6">
                         {step.content}
                       </Text>
                     )}
@@ -1029,7 +1142,7 @@ function App() {
                         p={3}
                         borderRadius="lg"
                         border="1px"
-                        borderColor="gray.200"
+                        borderColor="gray.100"
                         overflow="auto"
                         maxW="100%"
                       >
@@ -1049,7 +1162,7 @@ function App() {
                           p={3}
                           borderRadius="lg"
                           border="1px"
-                          borderColor="gray.200"
+                          borderColor="gray.100"
                           maxH="200px"
                           overflow="auto"
                         >
@@ -1057,7 +1170,7 @@ function App() {
                             <Thead>
                               <Tr>
                                 {Object.keys(step.content[0] || {}).map(key => (
-                                  <Th key={key} fontSize="xs" py={2} px={3} color="gray.700" fontWeight="semibold">{key}</Th>
+                                  <Th key={key} fontSize="xs" py={2} px={3} color="gray.700" fontWeight="medium">{key}</Th>
                                 ))}
                               </Tr>
                             </Thead>
@@ -1104,9 +1217,9 @@ function App() {
           {result && (
             <Box
               bg="white"
-              borderRadius="2xl"
+              borderRadius="xl"
               overflow="hidden"
-              boxShadow="0 4px 20px rgba(0, 0, 0, 0.08)"
+              boxShadow="0 2px 12px rgba(0, 0, 0, 0.04)"
               border="1px"
               borderColor="gray.100"
             >
@@ -1333,7 +1446,7 @@ function App() {
           left={isDesktop && !sidebarCollapsed ? "320px" : "0px"}
           right={0}
           bg="transparent"
-          p={3}
+          p={4}
           zIndex={20}
           transition="left 0.3s ease"
         >
@@ -1344,43 +1457,44 @@ function App() {
               onSubmit={handleSubmit}
               bg="white"
               p={4}
-              borderRadius="xl"
+              borderRadius="2xl"
               border="1px"
               borderColor="gray.200"
-              boxShadow="0 -2px 20px rgba(0, 0, 0, 0.1)"
+              boxShadow="0 4px 20px rgba(0, 0, 0, 0.08)"
             >
               <Input
                 placeholder="Ask me anything about your HR data..."
                 value={query}
                 onChange={(e) => setQuery(e.target.value)}
-                size="md"
+                size="lg"
                 borderRadius="xl"
-                border="2px"
-                borderColor="red.200"
+                border="1px"
+                borderColor="gray.200"
                 _focus={{
-                  borderColor: "red.400",
-                  boxShadow: "0 0 0 3px rgba(220, 38, 38, 0.1)"
+                  borderColor: "gray.400",
+                  boxShadow: "0 0 0 3px rgba(0, 0, 0, 0.05)"
                 }}
-                _hover={{ borderColor: "red.300" }}
+                _hover={{ borderColor: "gray.300" }}
                 onKeyPress={(e) => e.key === 'Enter' && handleSubmit(e)}
                 bg="white"
                 flex={1}
+                fontSize="md"
               />
               <Button
                 type="submit"
-                colorScheme="red"
-                size="md"
+                colorScheme="gray"
+                size="lg"
                 px={6}
                 py={5}
                 fontSize="md"
-                fontWeight="semibold"
+                fontWeight="medium"
                 borderRadius="xl"
-                boxShadow="0 2px 10px rgba(220, 38, 38, 0.3)"
+                boxShadow="0 2px 8px rgba(0, 0, 0, 0.1)"
                 isLoading={loading}
                 loadingText="Executing..."
                 _hover={{
                   transform: "translateY(-1px)",
-                  boxShadow: "0 4px 15px rgba(220, 38, 38, 0.4)"
+                  boxShadow: "0 4px 15px rgba(0, 0, 0, 0.15)"
                 }}
                 transition="all 0.2s"
               >
@@ -1401,58 +1515,101 @@ function App() {
         <DrawerOverlay />
         <DrawerContent>
           <DrawerCloseButton />
-          <DrawerHeader bg="gray.50" borderBottom="1px" borderColor="gray.200">
-            <Text color="gray.800">Chat History</Text>
+          <DrawerHeader bg="gray.50" borderBottom="1px" borderColor="gray.100">
+            <Text color="gray.800" fontWeight="medium">Chat History</Text>
           </DrawerHeader>
           <DrawerBody p={4}>
             {loadingHistory ? (
               <VStack spacing={4} py={8}>
-                <Spinner size="md" color="red.500" />
+                <Spinner size="md" color="gray.500" />
                 <Text fontSize="sm" color="gray.600">Loading history...</Text>
               </VStack>
             ) : history.length > 0 ? (
-              <VStack spacing={3} align="stretch">
-                  {history.flatMap(session => 
-                    session.queries.map((item, index) => (
-                      <Box
-                        key={`${session.id}-${index}`}
-                      p={4}
-                        bg={result?.session_id === item.session_id ? 'red.50' : 'white'}
-                      borderRadius="xl"
-                        cursor="pointer"
-                      onClick={() => {
-                        console.log('History item clicked:', item);
-                        loadQueryFromHistory(item);
-                        setSidebarOpen(false); // Close drawer after selection
-                      }}
-                        _hover={{ 
-                          bg: result?.session_id === item.session_id ? 'red.100' : 'gray.50',
-                        transform: 'translateY(-1px)',
-                        boxShadow: '0 4px 12px rgba(0, 0, 0, 0.1)'
-                        }}
-                        transition="all 0.2s"
-                        border="1px"
-                        borderColor={result?.session_id === item.session_id ? 'red.200' : 'gray.200'}
+              <VStack spacing={0} align="stretch">
+                {Object.entries(groupHistoryByDate(history)).map(([dateGroup, queries]) => {
+                  if (queries.length === 0) return null;
+                  
+                  return (
+                    <Box key={dateGroup}>
+                      {/* Date Group Header */}
+                      <Text 
+                        fontSize="xs" 
+                        fontWeight="medium" 
+                        color="gray.500" 
+                        textTransform="uppercase" 
+                        letterSpacing="wide"
+                        mb={3}
+                        px={2}
                       >
-                                              <VStack spacing={3} align="start">
-                          <Text fontSize="sm" fontWeight="medium" color="gray.800" noOfLines={2}>
-                            {item.natural_query}
-                          </Text>
-                          <HStack spacing={2} justify="space-between" w="full">
-                            <Text fontSize="xs" color="gray.500">
-                              {new Date(item.timestamp).toLocaleDateString()}
-                            </Text>
-                            {item.chart_data && (
-                              <Badge colorScheme="green" fontSize="xs" borderRadius="full" px={2} py={1}>
-                                Chart
-                              </Badge>
-                            )}
-                          </HStack>
-                        </VStack>
-                      </Box>
-                    ))
-                  )}
-                </VStack>
+                        {dateGroup}
+                      </Text>
+                      
+                      {/* Queries in this date group */}
+                      <VStack spacing={0} align="stretch">
+                        {queries.map((item, index) => (
+                          <Box
+                            key={`${item.id}-${index}`}
+                            py={3}
+                            px={2}
+                            bg="transparent"
+                            cursor="pointer"
+                            onClick={() => {
+                              console.log('History item clicked:', item.queries[0]);
+                              loadQueryFromHistory(item.queries[0]);
+                              setSidebarOpen(false); // Close drawer after selection
+                            }}
+                            _hover={{ 
+                              bg: "gray.50",
+                            }}
+                            transition="all 0.2s"
+                            borderBottom="1px"
+                            borderColor="gray.100"
+                            position="relative"
+                          >
+                            <HStack spacing={3} align="center" justify="space-between">
+                              <VStack spacing={1} align="start" flex={1}>
+                                <Text fontSize="sm" fontWeight="medium" color="gray.800" noOfLines={2}>
+                                  {item.queries[0].natural_query}
+                                </Text>
+                                <HStack spacing={2} justify="space-between" w="full">
+                                  <Text fontSize="xs" color="gray.500">
+                                    {new Date(item.queries[0].timestamp).toLocaleTimeString('tr-TR', { 
+                                      hour: '2-digit', 
+                                      minute: '2-digit',
+                                      hour12: false
+                                    })}
+                                  </Text>
+                                  {item.queries[0].chart_data && (
+                                    <Icon as={RepeatIcon} color="gray.500" boxSize={3} />
+                                  )}
+                                </HStack>
+                              </VStack>
+                              
+                              {/* Delete Button */}
+                              <IconButton
+                                aria-label="Delete query"
+                                icon={<DeleteIcon />}
+                                size="xs"
+                                variant="ghost"
+                                colorScheme="gray"
+                                opacity={0}
+                                _groupHover={{ opacity: 1 }}
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  if (item.id && item.queries[0].id) {
+                                    deleteQuery(item.id, item.queries[0].id);
+                                  }
+                                }}
+                                _hover={{ bg: "gray.100" }}
+                              />
+                            </HStack>
+                          </Box>
+                        ))}
+                      </VStack>
+                    </Box>
+                  );
+                })}
+              </VStack>
             ) : (
               <Box textAlign="center" py={8}>
                 <Text color="gray.500" fontSize="sm">
@@ -1461,8 +1618,8 @@ function App() {
                 <Text color="gray.400" fontSize="xs">
                   Start asking questions to see history
                 </Text>
-            </Box>
-          )}
+              </Box>
+            )}
           </DrawerBody>
         </DrawerContent>
       </Drawer>
@@ -1471,15 +1628,16 @@ function App() {
       <Modal isOpen={isOpen} onClose={onClose} size="6xl">
         <ModalOverlay />
         <ModalContent>
-          <ModalHeader bg="red.900" color="white">Data Visualization</ModalHeader>
-          <ModalCloseButton color="white" />
-          <ModalBody pb={6}>
+          <ModalHeader bg="gray.50" color="gray.800" borderBottom="1px" borderColor="gray.100">Data Visualization</ModalHeader>
+          <ModalCloseButton color="gray.600" />
+          <ModalBody pb={6} pt={4}>
             {result?.chart_data && (
               <Image 
                 src={result.chart_data} 
                 alt="Data Chart" 
                 w="full" 
                 h="auto"
+                borderRadius="md"
               />
             )}
           </ModalBody>
