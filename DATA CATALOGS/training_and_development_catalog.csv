@@ -1,10 +1,10 @@
 Field Name;Data Type;Format;Description;Example;Nullable
 EMPLOYEE_ID;NUMBER;4 digits;A unique identifier for each employee who participated in the training program;1234;No
-TRAINING_DATE;TIMESTAMP;dd-MMM-yy;The date on which the training session took place;21-Sep-22;No
+TRAINING_DATE;TIMESTAMP;dd-MMM-yy;The date on which the training session took place just identifier for start date for training;21-Sep-22;No
 TRAINING_PROGRAM_NAME;VARCHAR2;;The name or title of the training program attended by the employee;Technical Skills;No
 TRAINING_TYPE;VARCHAR2;;The categorization of the training indicating its purpose or focus;Internal;No
 TRAINING_OUTCOME;VARCHAR2;;The observed outcome or result of the training for the employee;Completed;No
 LOCATION;VARCHAR2;;The physical or virtual location where the training session was conducted;Conference Room A;No
 TRAINER;VARCHAR2;;The name of the trainer or instructor who facilitated the training;John Smith;No
-Training Duration(Days);NUMBER;;The duration of the training program in days;3;No
+Training Duration(Days);NUMBER;;The duration of the training program in days with numbers;3;No
 TRAINING_COST;NUMBER;Dollar based;The cost associated with organizing and conducting the training program;1250.50;No

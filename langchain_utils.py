@@ -342,6 +342,7 @@ RECRUITMENT DATA SPECIFIC EXAMPLES:
 
 Return ONLY this JSON format (no other text, no markdown, no explanations):
 {{
+
     "explanation": "Detailed HR analysis explaining what you will analyze, why it's important, and what insights you expect to find",
     "sql_query": "SELECT statement with actual table and column names from schema above that answers the user's question",
     "chart_config": {{
@@ -393,7 +394,29 @@ def generate_unified_ai_response(natural_query: str) -> Tuple[str, str, Dict[str
     logger.info(f"Available tables: {tables}")
     logger.info(f"Catalog context length: {len(catalog_context)}")
     
-    # Create and run unified pipeline
+    # Switchable pipeline: CrewAI or LangChain
+    try:
+        engine = os.getenv("PIPELINE_ENGINE", "langchain").lower()
+    except Exception:
+        engine = "langchain"
+
+    if engine == "crewai":
+        try:
+            from crewai_pipeline import run_crewai_pipeline
+            explanation, sql_query, chart_config, data_availability = run_crewai_pipeline(
+                natural_query,
+                schema,
+                table_info,
+                sample_data,
+                catalog_context,
+                catalog_summary
+            )
+            return explanation, sql_query, chart_config, data_availability
+        except Exception as e:
+            logger.error(f"CrewAI path failed: {e}. Falling back to LangChain.")
+            # fall through to LangChain path
+
+    # Create and run unified pipeline (LangChain)
     pipeline = create_unified_langchain_pipeline()
     
     try:
@@ -437,6 +460,23 @@ def generate_unified_ai_response(natural_query: str) -> Tuple[str, str, Dict[str
             sql_query = ai_response.get("sql_query", "")
             chart_config = ai_response.get("chart_config", {"chart_type": "bar"})
             
+            # Schema-aware validation and auto-fix (align with CrewAI path)
+            try:
+                from crewai_pipeline import _parse_table_info_to_map, _validate_and_autofix_sql
+                schema_map = _parse_table_info_to_map(table_info)
+                sql_query, valid, reason = _validate_and_autofix_sql(sql_query, schema_map)
+                if not valid:
+                    logger.error(f"SQL validation failed: {reason}")
+                    raise ValueError(f"Invalid SQL: {reason}")
+                # Intent-aware postprocess (prefer COUNT when asked by user)
+                try:
+                    from crewai_pipeline import _apply_intent_postprocess
+                    sql_query, chart_config = _apply_intent_postprocess(natural_query, sql_query, chart_config, schema_map)
+                except Exception as _:
+                    pass
+            except Exception as e:
+                logger.warning(f"Schema validation step skipped or failed: {e}")
+
             # Validate SQL query - prevent fallback to SELECT 1 FROM DUAL
             if not sql_query or sql_query.strip() == "" or "SELECT 1 FROM DUAL" in sql_query.upper():
                 logger.error(f"Invalid SQL query generated: {sql_query}")

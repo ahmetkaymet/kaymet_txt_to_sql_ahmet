@@ -7,6 +7,7 @@ This API provides endpoints:
 - /chart: Generates charts for query results
 """
 import asyncio
+import os
 import time
 import datetime
 import json
@@ -131,10 +132,32 @@ async def root():
             {"path": "/execute-sql", "method": "POST", "description": "Execute HR analytics query with LangChain"},
             {"path": "/check-and-execute", "method": "POST", "description": "Check HR data availability and execute analytics query"},
             {"path": "/chart", "method": "POST", "description": "Generate HR-specific charts and visualizations"},
+            {"path": "/engine", "method": "GET", "description": "Report active pipeline engine and CrewAI availability"},
             {"path": "/user-permissions/{username}", "method": "GET", "description": "Get user permissions"},
             {"path": "/users", "method": "GET", "description": "List all demo users"},
 
         ]
+    }
+
+@app.get("/engine")
+async def engine_info():
+    """Report configured engine and CrewAI availability."""
+    try:
+        configured = os.getenv("PIPELINE_ENGINE", "langchain").lower()
+    except Exception:
+        configured = "langchain"
+
+    try:
+        import crewai  # type: ignore
+        crewai_available = True
+    except Exception:
+        crewai_available = False
+
+    using_crewai = configured == "crewai" and crewai_available
+    return {
+        "configured_engine": configured,
+        "crewai_available": crewai_available,
+        "using_crewai": using_crewai,
     }
 
 class QueryRequest(BaseModel):
