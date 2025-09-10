@@ -89,7 +89,7 @@ interface HistoryItem {
 }
 
 // API URL'ini doğru şekilde tanımla
-const API_URL = 'http://localhost:8000';
+const API_URL = 'http://localhost:8001';
 
 // Utility function to format timestamp to Turkey time
 const formatTimestampToTurkeyTime = (timestamp: string): string => {

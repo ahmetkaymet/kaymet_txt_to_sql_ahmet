@@ -17,8 +17,8 @@ plotly==5.17.0
 kaleido==0.2.1
 
 # Database
-oracledb==2.0.1
 python-dotenv==1.0.0
+openpyxl>=3.1.0
 
 # Optional multi-agent orchestration
 crewai>=0.64.0

@@ -541,22 +541,22 @@ async def check_and_execute(request: QueryRequest) -> CheckAndExecuteResponse:
 
 if __name__ == "__main__":
     import uvicorn
-    from config.oracle_config import get_connection_pool
+    from excel_data_provider import get_excel_provider
     
-    logger.info("Starting server with LangChain support...")
+    logger.info("Starting server with Excel data support...")
     
-    # Initialize connection pool before starting server
+    # Initialize Excel data provider before starting server
     try:
-        pool = get_connection_pool()
-        logger.info("Oracle connection pool initialized successfully")
+        provider = get_excel_provider()
+        logger.info(f"Excel data provider initialized successfully with {len(provider.get_tables())} tables")
     except Exception as e:
-        logger.error(f"Failed to initialize connection pool: {e}")
+        logger.error(f"Failed to initialize Excel data provider: {e}")
         logger.warning("Server will start but database operations may be slow")
     
     uvicorn.run(
         "main:app",  # string olarak uygulama yolunu ver
         host="127.0.0.1",
-        port=8000,
+        port=8001,
         log_level="info",  # Changed from debug to info for better performance
         reload=True
     )

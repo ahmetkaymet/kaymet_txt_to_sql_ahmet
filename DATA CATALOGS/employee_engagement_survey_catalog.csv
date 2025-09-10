@@ -1,6 +1,0 @@
-Field Name;Data Type;Format;Description;Example;Nullable
-EMPLOYEE_ID;NUMBER;;A unique identifier assigned to each employee who participated in the employee engagement survey;1001;No
-SURVEY_DATE;VARCHAR2;dd-mm-yyyy;The date on which the engagement survey was administered to employees;10.10.2022;No
-ENGAGEMENT_SCORE;NUMBER;;A calculated numerical score representing the level of employee engagement based on survey responses;255;No
-SATISFACTION_SCORE;NUMBER;;A numerical score indicating employee satisfaction with various aspects of their job and workplace;453;No
-WORK_LIFE_BALANCE_SCORE;NUMBER;;A numerical score reflecting employee perceptions of the balance between work and personal life;252;No

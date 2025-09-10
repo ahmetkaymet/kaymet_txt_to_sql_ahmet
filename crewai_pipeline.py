@@ -86,10 +86,18 @@ def _extract_columns_from_sql(sql: str) -> List[str]:
     if not sql:
         return []
     cols = set()
-    # Capture quoted identifiers "IDENT"
-    for m in re.finditer(r'"([A-Z0-9_$#]+)"', sql.upper()):
+    sql_upper = sql.upper()
+    
+    # Skip SELECT aliases - they are not actual columns
+    # Remove AS clauses to avoid extracting aliases as columns
+    sql_without_aliases = re.sub(r'\s+AS\s+"[^"]+"', '', sql_upper)
+    
+    # Capture quoted identifiers "IDENT" but exclude SELECT aliases
+    for m in re.finditer(r'"([A-Z0-9_$#]+)"', sql_without_aliases):
         ident = m.group(1)
-        cols.add(ident)
+        # Skip common alias patterns
+        if not any(alias_pattern in ident for alias_pattern in ['COUNT', 'SUM', 'AVG', 'MAX', 'MIN', 'EMPLOYEE_COUNT', 'TOTAL']):
+            cols.add(ident)
     return list(cols)
 
 
@@ -179,19 +187,24 @@ def _apply_intent_postprocess(natural_query: str, sql_query: str, chart_config: 
             return sql_query, chart_config
 
         upper_sql = sql_query.upper()
-        # Identify grouping dimension; prefer DEPARTMENTTYPE if present
+        # Identify grouping dimension from GROUP BY or first selected column (no dataset-specific names)
         group_dim = None
-        if '"DEPARTMENTTYPE"' in upper_sql:
-            group_dim = '"DEPARTMENTTYPE"'
+        m_gb = re.search(r'GROUP\s+BY\s+"([A-Z0-9_$#]+)"', upper_sql)
+        if m_gb:
+            group_dim = f'"{m_gb.group(1)}"'
         else:
-            # Fallback: try to parse first selected column name
-            m = re.search(r'SELECT\s+"([A-Z0-9_$#]+)"', upper_sql)
-            if m:
-                group_dim = f'"{m.group(1)}"'
+            m_sel = re.search(r'SELECT\s+"([A-Z0-9_$#]+)"', upper_sql)
+            if m_sel:
+                group_dim = f'"{m_sel.group(1)}"'
 
-        # Identify source table if we need a fallback
+        # Identify source table dynamically (no hardcoded table names)
         tables = _extract_tables_from_sql(sql_query)
-        source_table = f'"{tables[0]}"' if tables else '"EMPLOYEE_DATA"'
+        if tables:
+            source_table = f'"{tables[0]}"'
+        elif len(schema_map) == 1:
+            source_table = f'"{next(iter(schema_map.keys()))}"'
+        else:
+            source_table = None
 
         if group_dim:
             # Replace second expression with COUNT(*) as EMPLOYEE_COUNT
@@ -217,12 +230,15 @@ def _apply_intent_postprocess(natural_query: str, sql_query: str, chart_config: 
             new_cfg["y_column"] = "EMPLOYEE_COUNT"
             return fixed, new_cfg
         else:
-            # No group; simple total count
-            fixed = f'SELECT COUNT(*) AS EMPLOYEE_COUNT FROM {source_table}'
-            new_cfg = dict(chart_config or {})
-            new_cfg["chart_type"] = "indicator"
-            new_cfg["title"] = new_cfg.get("title") or "Total Count"
-            return fixed, new_cfg
+            # No group; simple total count if we can infer a table safely
+            if source_table:
+                fixed = f'SELECT COUNT(*) AS EMPLOYEE_COUNT FROM {source_table}'
+                new_cfg = dict(chart_config or {})
+                new_cfg["chart_type"] = "indicator"
+                new_cfg["title"] = new_cfg.get("title") or "Total Count"
+                return fixed, new_cfg
+            # If we cannot infer a table, keep original SQL/config (avoid hardcoded fallbacks)
+            return sql_query, chart_config
     except Exception:
         return sql_query, chart_config
 
@@ -236,63 +252,54 @@ def _fallback_single_step(natural_query: str, db_schema: str, table_info: str, s
         api_key=os.getenv("OPENAI_API_KEY")
     )
 
-    # Mirror LangChain unified prompt rules and examples
+    # Enhanced prompt with data catalog access and primary key information
     prompt = f"""
-You are Aimet, an expert HR Data Analyst with 15+ years of experience in HR analytics, employee retention, and workforce planning. You MUST think like a human HR expert and analyze the data catalogs to understand the business context.
+You are Aimet, an expert HR Data Analyst. You have FULL ACCESS to all data catalogs and table schemas.
+
+USER QUERY: {{natural_query}}
+
+DATABASE SCHEMA INFORMATION:
+- You have access to 4 tables: BI_PDKS, BI_CALISAN_BILGILERI, BI_HARCIRAH_AYRINTILI_SUREC, BI_AYLIK_IZIN_KULLANIM
+- SICIL_NUMARASI is the PRIMARY KEY that connects all tables
+- Each table has SICIL_NUMARASI as the common identifier
+
+TABLE STRUCTURE:
+- BI_PDKS: Contains work data (IS_WEEKEND, WORK_DATE, ENTRY_TIME, EXIT_TIME, etc.) - NO GENDER column
+- BI_CALISAN_BILGILERI: Contains personal data (GENDER, AD_SOYAD, DEPARTMENT, etc.) - NO IS_WEEKEND column
+- BI_HARCIRAH_AYRINTILI_SUREC: Contains travel expense data
+- BI_AYLIK_IZIN_KULLANIM: Contains leave data
+
+CRITICAL JOIN RULES:
+- If you need GENDER data, you MUST use BI_CALISAN_BILGILERI table
+- If you need IS_WEEKEND data, you MUST use BI_PDKS table
+- If you need BOTH GENDER and IS_WEEKEND, you MUST JOIN these tables on SICIL_NUMARASI
+
+CRITICAL INSTRUCTIONS:
+1. READ THE USER'S QUERY CAREFULLY - Do not assume what they want
+2. ANALYZE EACH WORD in the query to understand the exact request
+3. GENERATE SQL based on the ACTUAL query, not examples
+4. If user asks about "işten çıkışları" (departures), look for termination/exit data
+5. If user asks about "hafta sonu" (weekend), look for weekend work data
+6. If user asks about "cinsiyet" (gender), use BI_CALISAN_BILGILERI table
+7. If user asks about "departman" (department), use DEPARTMENT column
+8. ALWAYS use JOINs when data from multiple tables is needed
+9. For "korelasyon" queries, include PERCENTAGE calculations
+10. NEVER use hardcoded examples - generate fresh SQL for each query
 
 AVAILABLE TABLES AND COLUMNS:
 {{context}}
 
-USER QUERY: {{natural_query}}
-
-CRITICAL INSTRUCTIONS:
-1. THINK LIKE AN HR EXPERT: Analyze the user's question from an HR professional perspective. What business insights are they really looking for?
-2. EXAMINE DATA CATALOGS CAREFULLY: The data catalogs contain detailed explanations of what each table and column represents. Read them thoroughly to understand the business context.
-3. USE ONLY EXISTING TABLES: Look at the database schema above - these are the ONLY tables you can use. Never create or reference tables that don't exist.
-4. GENERATE MEANINGFUL SQL: Create SQL queries that actually answer the user's question with real business value.
-5. ALWAYS INCLUDE COLUMN NAMES: Never use SELECT * - always specify the exact columns you need.
-6. USE DOUBLE QUOTES: Wrap table and column names in double quotes: "TableName", "ColumnName"
-7. NO SEMICOLON: Don't end SQL with semicolon
-8. NEVER RETURN SELECT 1 FROM DUAL: This is meaningless and shows you didn't understand the question
-
-EXAMPLES OF HR EXPERT THINKING:
-- For "employee turnover rate by department":
-  * Think: Turnover = (Employees who left / Total employees) * 100
-  * Look for: EXITDATE, EMPLOYEE_STATUS, DEPARTMENTTYPE in EMPLOYEE_DATA
-  * Query: Calculate percentage of employees with EXITDATE not null, grouped by DEPARTMENTTYPE
-- For "average experience years for candidates by job title":
-  * Think: Recruitment data analysis, candidate experience levels by position
-  * Look for: RECRUITMENT_DATA table, YEARS_OF_EXPERIENCE, JOB_TITLE columns
-  * Query: Calculate AVG(YEARS_OF_EXPERIENCE) grouped by JOB_TITLE from RECRUITMENT_DATA
-- For "average desired salary by position":
-  * Think: Recruitment data, salary expectations, market analysis
-  * Look for: RECRUITMENT_DATA table, DESIRED_SALARY, JOB_TITLE columns
-  * Query: Calculate AVG(DESIRED_SALARY) grouped by JOB_TITLE from RECRUITMENT_DATA
-- For "employee engagement by department":
-  * Think: Survey data, satisfaction scores, team performance
-  * Look for: EMPLOYEE_ENGAGEMENT_SURVEY table, satisfaction columns, department columns
-
-SPECIFIC HR ANALYTICS EXAMPLES:
-- Turnover analysis: Use EXITDATE, EMPLOYEE_STATUS, DEPARTMENTTYPE from EMPLOYEE_DATA
-- Performance analysis: Use PERFORMANCE_SCORE, CURRENT_EMPLOYEE_RATING, DEPARTMENTTYPE
-- Recruitment analysis: Use RECRUITMENT_DATA table for hiring metrics (YEARS_OF_EXPERIENCE, JOB_TITLE, DESIRED_SALARY)
-- Engagement analysis: Use EMPLOYEE_ENGAGEMENT_SURVEY table for satisfaction metrics
-
-Return ONLY this JSON format (no other text, no markdown, no explanations):
+Return ONLY this JSON format:
 {{
-    "explanation": "Detailed HR analysis explaining what you will analyze, why it's important, and what insights you expect to find",
-    "sql_query": "SELECT statement with actual table and column names from schema above that answers the user's question",
+    "explanation": "Brief explanation of the analysis",
+    "sql_query": "SELECT statement with proper JOINs if needed",
     "chart_config": {{
-        "chart_type": "bar|line|pie|table",
-        "title": "Descriptive chart title",
-        "x_column": "actual column name from schema",
-        "y_column": "actual column name from schema"
+        "chart_type": "bar",
+        "title": "Chart title",
+        "x_column": "column_name",
+        "y_column": "column_name"
     }}
 }}
-
-CRITICAL: Return ONLY the JSON above, no other text. Think like an HR expert and use the data catalogs to understand the business context.
-
-IMPORTANT: You must return valid JSON. Do not add any explanations before or after the JSON. The response must start with {{ and end with }}.
 """
 
     full_context = _build_context(db_schema, table_info, sample_data, catalog_context, catalog_summary)
@@ -314,7 +321,7 @@ IMPORTANT: You must return valid JSON. Do not add any explanations before or aft
         # Provide meaningful error contract
         return (
             "AI response parsing failed in fallback pipeline.",
-            "SELECT 'AI parsing error - please try again' AS error_message FROM DUAL",
+            "SELECT COUNT(*) as error_count FROM BI_CALISAN_BILGILERI WHERE 1=0",
             {"chart_type": "none", "reason": "AI parsing error"},
             {"available": False, "reason": "AI parsing error"}
         )
@@ -329,7 +336,7 @@ IMPORTANT: You must return valid JSON. Do not add any explanations before or aft
     if not valid:
         return (
             f"AI generated invalid SQL: {reason}",
-            "SELECT 'Invalid AI SQL - please rephrase' AS error_message FROM DUAL",
+            "SELECT COUNT(*) as error_count FROM BI_CALISAN_BILGILERI WHERE 1=0",
             {"chart_type": "none", "reason": reason},
             {"available": False, "reason": reason}
         )
@@ -340,7 +347,7 @@ IMPORTANT: You must return valid JSON. Do not add any explanations before or aft
     if not sql_query or "SELECT 1 FROM DUAL" in sql_query.upper():
         return (
             "AI generated invalid SQL query.",
-            "SELECT 'Invalid AI SQL - please rephrase' AS error_message FROM DUAL",
+            "SELECT COUNT(*) as error_count FROM BI_CALISAN_BILGILERI WHERE 1=0",
             {"chart_type": "none", "reason": "Invalid SQL"},
             {"available": False, "reason": "Invalid SQL"}
         )
@@ -360,6 +367,10 @@ def run_crewai_pipeline(
 
     Returns (explanation, sql_query, chart_config, data_availability)
     """
+    # Force fallback to single-step for debugging JOIN issues
+    logger.info("Forcing fallback to single-step for debugging JOIN issues.")
+    return _fallback_single_step(natural_query, db_schema, table_info, sample_data, catalog_context, catalog_summary)
+    
     try:
         # Lazy import so that the project runs without CrewAI installed
         from crewai import Agent, Task, Crew, Process
@@ -422,9 +433,21 @@ def run_crewai_pipeline(
             "{\n  \"explanation\": \"...\",\n  \"sql_query\": \"...\",\n  \"chart_config\": {\n    \"chart_type\": \"bar|line|pie|table\",\n    \"title\": \"...\",\n    \"x_column\": \"...\",\n    \"y_column\": \"...\"\n  }\n}\n\n"
             "Rules: use double quotes for identifiers, no semicolon, never SELECT 1 FROM DUAL, use only existing tables/columns, avoid SELECT *.\n"
             f"Allowed tables: {allowed_tables_list}\n"
-            "Guidance: Prefer EMPLOYEE_DATA for employee metrics (DEPARTMENTTYPE, EXITDATE, EMPLOYEE_STATUS),\n"
-            "RECRUITMENT_DATA for recruitment metrics (YEARS_OF_EXPERIENCE, JOB_TITLE, DESIRED_SALARY), and\n"
-            "EMPLOYEE_ENGAGEMENT_SURVEY for engagement metrics."
+            "CRITICAL JOIN RULES:\n"
+            "- BI_PDKS: Contains work data (IS_WEEKEND, WORK_DATE, ENTRY_TIME, EXIT_TIME, etc.) - NO GENDER column\n"
+            "- BI_CALISAN_BILGILERI: Contains personal data (GENDER, AD_SOYAD, DEPARTMENT, etc.) - NO IS_WEEKEND column\n"
+            "- BI_HARCIRAH_AYRINTILI_SUREC: Contains travel expense data\n"
+            "- BI_AYLIK_IZIN_KULLANIM: Contains leave data\n"
+            "- SICIL_NUMARASI is the PRIMARY KEY that connects all tables\n"
+            "- If you need GENDER data, you MUST use BI_CALISAN_BILGILERI table\n"
+            "- If you need IS_WEEKEND data, you MUST use BI_PDKS table\n"
+            "- If you need BOTH GENDER and IS_WEEKEND, you MUST JOIN these tables on SICIL_NUMARASI\n"
+            "EXAMPLE FOR 'hafta sonu çalışma oranları cinsiyetlere göre':\n"
+            "SELECT BI_CALISAN_BILGILERI.GENDER, COUNT(*) AS WEEKEND_COUNT \n"
+            "FROM BI_PDKS \n"
+            "JOIN BI_CALISAN_BILGILERI ON BI_PDKS.SICIL_NUMARASI = BI_CALISAN_BILGILERI.SICIL_NUMARASI \n"
+            "WHERE BI_PDKS.IS_WEEKEND = 'True' \n"
+            "GROUP BY BI_CALISAN_BILGILERI.GENDER"
         ),
         agent=sql_architect,
         expected_output="Strict JSON with explanation, sql_query, chart_config.",

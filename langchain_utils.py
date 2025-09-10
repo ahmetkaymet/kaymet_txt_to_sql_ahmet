@@ -103,10 +103,9 @@ class ChartTypeParser:
 
 
 def get_db_connection():
-    """Creates and returns an Oracle database connection from pool"""
-    from config.oracle_config import get_connection_pool
-    pool = get_connection_pool()
-    return pool.get_connection()
+    """Creates and returns an Excel data provider connection"""
+    from excel_data_provider import get_excel_provider
+    return get_excel_provider()
 
 
 # Global cache for database schema and sample data
@@ -150,64 +149,34 @@ def get_cached_sample_data() -> str:
 
 
 def _fetch_db_schema() -> str:
-    """Fetch database schema from database"""
-    from config.oracle_config import get_connection_pool
-    pool = get_connection_pool()
+    """Fetch database schema from Excel files"""
+    excel_provider = get_db_connection()
+    tables = excel_provider.get_tables()
     
-    with pool.get_connection() as conn:
-        cursor = conn.cursor()
+    schema_text = "Database Schema:\n\n"
+    
+    for table_name in tables:
+        columns = excel_provider.get_table_schema(table_name)
         
-        # Get all tables
-        cursor.execute("""
-            SELECT table_name 
-            FROM user_tables 
-            ORDER BY table_name
-        """)
-        tables = cursor.fetchall()
+        schema_text += f"Table: {table_name}\n"
+        schema_text += "-" * (len(table_name) + 7) + "\n"
+        for col in columns:
+            schema_text += f"  {col} (VARCHAR2) NULL\n"
+        schema_text += "\n"
         
-        schema_text = "Database Schema:\n\n"
-        
-        for table in tables:
-            table_name = table[0]
-            cursor.execute(f"""
-                SELECT column_name, data_type, nullable
-                FROM user_tab_columns
-                WHERE table_name = '{table_name}'
-                ORDER BY column_id
-            """)
-            columns = cursor.fetchall()
-            
-            schema_text += f"Table: {table_name}\n"
-            schema_text += "-" * (len(table_name) + 7) + "\n"
-            for col in columns:
-                nullable = "NULL" if col[2] == 'Y' else "NOT NULL"
-                schema_text += f"  {col[0]} ({col[1]}) {nullable}\n"
-            schema_text += "\n"
-            
-        return schema_text
+    return schema_text
 
 
 def _fetch_sample_data() -> str:
-    """Fetch sample data from database"""
-    from config.oracle_config import get_connection_pool
-    pool = get_connection_pool()
+    """Fetch sample data from Excel files"""
+    excel_provider = get_db_connection()
+    tables = excel_provider.get_tables()
     
-    with pool.get_connection() as conn:
-        cursor = conn.cursor()
-        cursor.execute("SELECT table_name FROM user_tables")
-        tables = [row[0] for row in cursor.fetchall()]
-        
-        sample_data = "\nSample Data Examples:\n"
-        for table in tables:
-            cursor.execute(f"SELECT * FROM \"{table}\" WHERE ROWNUM <= 3")
-            rows = cursor.fetchall()
-            if rows:
-                sample_data += f"\n{table} sample rows:\n"
-                columns = [description[0] for description in cursor.description]
-                for row in rows:
-                    sample_data += f"- {', '.join([f'{columns[i]}: {value}' for i, value in enumerate(row)])}\n"
-        
-        return sample_data
+    sample_data = "\nSample Data Examples:\n"
+    for table in tables:
+        sample_data += excel_provider.get_sample_data(table, limit=3)
+    
+    return sample_data
 
 
 def get_db_schema() -> str:
@@ -371,27 +340,15 @@ def generate_unified_ai_response(natural_query: str) -> Tuple[str, str, Dict[str
     sample_data = get_cached_sample_data()
     
     # Get table information (this is lightweight, no need to cache)
-    from config.oracle_config import get_connection_pool
-    pool = get_connection_pool()
-    
-    with pool.get_connection() as conn:
-        cursor = conn.cursor()
-        cursor.execute("SELECT table_name FROM user_tables")
-        tables = [row[0] for row in cursor.fetchall()]
-        
-        # Get table information
-        table_info = "\nEXACT TABLE STRUCTURE:\n"
-        for table in tables:
-            cursor.execute(f"SELECT column_name FROM user_tab_columns WHERE table_name = '{table}' ORDER BY column_id")
-            columns = [row[0] for row in cursor.fetchall()]
-            table_info += f"{table} table has ONLY these columns: {', '.join(columns)}\n"
+    excel_provider = get_db_connection()
+    table_info = excel_provider.get_table_info()
     
     # Get catalog context for better AI understanding
     catalog_context = get_catalog_context()
     catalog_summary = get_catalog_summary()
     
     logger.info(f"Processing query: {natural_query}")
-    logger.info(f"Available tables: {tables}")
+    logger.info(f"Available tables: {table_info if isinstance(table_info, str) else list(table_info.keys())}")
     logger.info(f"Catalog context length: {len(catalog_context)}")
     
     # Switchable pipeline: CrewAI or LangChain
@@ -504,7 +461,7 @@ def generate_unified_ai_response(natural_query: str) -> Tuple[str, str, Dict[str
             logger.error(f"Response text: {response_text}")
             # Don't fallback to old method - create a meaningful error response
             error_explanation = f"AI response parsing failed. Please try rephrasing your question. Error: {str(e)}"
-            error_sql = "SELECT 'AI parsing error - please try again' AS error_message FROM DUAL"
+            error_sql = "SELECT COUNT(*) as error_count FROM BI_CALISAN_BILGILERI WHERE 1=0"
             error_chart_config = {"chart_type": "none", "reason": "AI parsing error"}
             return error_explanation, error_sql, error_chart_config, {"available": False, "reason": "AI parsing error"}
         
@@ -512,7 +469,7 @@ def generate_unified_ai_response(natural_query: str) -> Tuple[str, str, Dict[str
         logger.error(f"Error in unified AI pipeline: {e}")
         # Don't fallback to old method - create a meaningful error response
         error_explanation = f"AI pipeline error. Please try rephrasing your question. Error: {str(e)}"
-        error_sql = "SELECT 'AI pipeline error - please try again' AS error_message FROM DUAL"
+        error_sql = "SELECT COUNT(*) as error_count FROM BI_CALISAN_BILGILERI WHERE 1=0"
         error_chart_config = {"chart_type": "none", "reason": "AI pipeline error"}
         return error_explanation, error_sql, error_chart_config, {"available": False, "reason": "AI pipeline error"}
 
@@ -527,28 +484,9 @@ def generate_sql_with_langchain(natural_query: str) -> Tuple[str, str, str]:
     catalog_context = get_catalog_context()
     catalog_summary = get_catalog_summary()
     
-    with get_db_connection() as conn:
-        cursor = conn.cursor()
-        cursor.execute("SELECT table_name FROM user_tables")
-        tables = [row[0] for row in cursor.fetchall()]
-        
-        # Get table information
-        table_info = "\nEXACT TABLE STRUCTURE:\n"
-        for table in tables:
-            cursor.execute(f"SELECT column_name FROM user_tab_columns WHERE table_name = '{table}' ORDER BY column_id")
-            columns = [row[0] for row in cursor.fetchall()]
-            table_info += f"{table} table has ONLY these columns: {', '.join(columns)}\n"
-        
-        # Get sample data
-        sample_data = "\nSample Data Examples:\n"
-        for table in tables:
-            cursor.execute(f"SELECT * FROM \"{table}\" WHERE ROWNUM <= 3")
-            rows = cursor.fetchall()
-            if rows:
-                sample_data += f"\n{table} sample rows:\n"
-                columns = [description[0] for description in cursor.description]
-                for row in rows:
-                    sample_data += f"- {', '.join([f'{columns[i]}: {value}' for i, value in enumerate(row)])}\n"
+    excel_provider = get_db_connection()
+    table_info = excel_provider.get_table_info()
+    sample_data = excel_provider._fetch_sample_data()
     
     # Create and run pipeline with enhanced context
     pipeline = create_langchain_pipeline()
@@ -581,7 +519,7 @@ def generate_sql_with_langchain(natural_query: str) -> Tuple[str, str, str]:
         logger.error(f"SQL parsing failed: {e}")
         # Return error response instead of falling back
         error_response = f"SQL parsing failed: {str(e)}. Please try rephrasing your question."
-        error_sql = "SELECT 'SQL parsing error - please try again' AS error_message FROM DUAL"
+        error_sql = "SELECT COUNT(*) as error_count FROM BI_CALISAN_BILGILERI WHERE 1=0"
         error_chart_config = {"chart_type": "none", "reason": "SQL parsing error"}
         return error_response, error_sql, error_chart_config
 
@@ -658,40 +596,27 @@ def execute_sql_query(query: str) -> List[Dict[str, Any]]:
         logger.warning(f"Dangerous SQL command detected: {query}")
         return [{"warning": "Data modification operations are not allowed."}]
     
-    from config.oracle_config import get_connection_pool
-    pool = get_connection_pool()
+    excel_provider = get_db_connection()
     
-    with pool.get_connection() as conn:
-        cursor = conn.cursor()
+    try:
+        data, message = excel_provider.execute_query(query)
         
-        try:
-            cursor.execute(query)
-            
-            if cursor.description:
-                columns = [description[0] for description in cursor.description]
-                results = cursor.fetchall()
-                
-                if not results:
-                    return []
-                
-                return [{columns[i]: value for i, value in enumerate(row)} for row in results]
-            else:
-                conn.commit()
-                return [{"result": "Query executed successfully. No data to return."}]
+        if not data:
+            return [{"result": "Query executed successfully. No data to return."}]
         
-        except Exception as e:
-            error_msg = str(e)
-            logger.error(f"Error executing query: {error_msg}")
-            
-            # Handle specific Oracle errors
-            if "ORA-00933" in error_msg:
-                return [{"error": "SQL syntax error: Remove semicolon from end of query"}]
-            elif "ORA-00942" in error_msg:
-                return [{"error": "Table or view does not exist"}]
-            elif "ORA-00904" in error_msg:
-                return [{"error": "Invalid column name"}]
-            else:
-                return [{"error": f"Database error: {error_msg}"}]
+        return data
+        
+    except Exception as e:
+        error_msg = str(e)
+        logger.error(f"Error executing query: {error_msg}")
+        
+        # Handle specific errors
+        if "not found" in error_msg.lower():
+            return [{"error": "Table or view does not exist"}]
+        elif "invalid" in error_msg.lower():
+            return [{"error": "Invalid column name or syntax"}]
+        else:
+            return [{"error": f"Query error: {error_msg}"}]
 
 
 def analyze_results_with_ai(query: str, results: List[Dict[str, Any]], sql_query: str) -> str:
