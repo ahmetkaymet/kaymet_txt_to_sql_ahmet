@@ -1,0 +1,316 @@
+{
+  "schema_name": "HR_CALISAN_RULESET",
+  "version": "1.2.1",
+  "updated_at": "2025-09-10T11:23:41",
+  "locale": "tr-TR",
+  "tables": [
+    {
+      "table": "BI_CALISAN_BILGILERI",
+      "primary_key": "EMP_NO",
+      "columns": [
+        {
+          "name": "EMP_NO",
+          "type": "number",
+          "nullable": false,
+          "description": "Sicil numarası (eşsiz anahtar)"
+        },
+        {
+          "name": "FULL_NAME",
+          "type": "string",
+          "nullable": false,
+          "description": "Ad Soyad (gösterim için)"
+        },
+        {
+          "name": "DEPARTMENT",
+          "type": "string",
+          "nullable": true,
+          "description": "Departman adı"
+        },
+        {
+          "name": "TITLE",
+          "type": "string",
+          "nullable": true,
+          "description": "Ünvan"
+        },
+        {
+          "name": "POSITION",
+          "type": "string",
+          "nullable": true,
+          "description": "Pozisyon"
+        },
+        {
+          "name": "WORK_S_DATE",
+          "type": "date",
+          "nullable": true,
+          "description": "İşe başlangıç tarihi (tarih, saat yok)"
+        },
+        {
+          "name": "WORK_E_DATE",
+          "type": "date",
+          "nullable": true,
+          "description": "İşten çıkış tarihi (tarih, saat yok)"
+        },
+        {
+          "name": "WORKING_STATUS",
+          "type": "string",
+          "nullable": true,
+          "description": "Çalışma durumu (örn. Aktif, Pasif, Stajyer)"
+        },
+        {
+          "name": "EDUCATION",
+          "type": "string",
+          "nullable": true,
+          "description": "Öğrenim durumu"
+        },
+        {
+          "name": "GENDER",
+          "type": "string",
+          "nullable": true,
+          "description": "Cinsiyet"
+        },
+        {
+          "name": "LOCATION",
+          "type": "string",
+          "nullable": true,
+          "description": "Lokasyon"
+        },
+        {
+          "name": "YEARS_OF_SERVICE",
+          "type": "number",
+          "nullable": true,
+          "description": "Hizmet süresi (yıl)"
+        }
+      ]
+    }
+  ],
+  "business_rules": {
+    "active_employee_definition": {
+      "description": "Aktif çalışan: WORK_E_DATE IS NULL (VARCHAR2 type, not DATE).",
+      "sql": "WORK_E_DATE IS NULL",
+      "applies_to": [
+        "counts",
+        "lists",
+        "groupings",
+        "aggregations"
+      ],
+      "default": true,
+      "notes": [
+        "Kullanıcı açıkça 'aktif filtreyi kaldır' derse sadece o sorgu için kaldırılır.",
+        "Sayım sorularında (örn. 'Kaç çalışan var?') aktif filtre ZORUNLUDUR."
+      ]
+    },
+    "string_normalization": {
+      "description": "Tüm metin alanlarında Türkçe uyumlu, case-insensitive arama ve eşleştirme.",
+      "rules": [
+        "FULL_NAME, DEPARTMENT, TITLE, POSITION, EDUCATION alanlarında UPPER/LOWER dönüşümü Türkçe kurallara göre yapılır.",
+        "Türkçe harfler doğru normalize edilir: i↔İ, ı↔I, ç↔Ç, ğ↔Ğ, ş↔Ş, ö↔Ö, ü↔Ü.",
+        "Kullanıcı girdisi ve tablo değerleri normalize edildikten sonra karşılaştırılır."
+      ],
+      "enforced": true
+    },
+    "identity_matching": {
+      "description": "Kişi eşleştirme önceliği ve güvenliği.",
+      "priority": [
+        "KIMLIK_NO (varsa)",
+        "EMP_NO",
+        "NAME+SURNAME (izin tablosundan gerekiyorsa)"
+      ],
+      "notes": [
+        "FULL_NAME gösterim içindir; aramalarda NAME+SURNAME tercih edilir (ilgili tabloda mevcutsa).",
+        "Aynı ad-soyada birden çok kayıt çıkarsa TCKN/EMP_NO istenir."
+      ]
+    },
+    "date_handling": {
+      "description": "WORK_S_DATE ve WORK_E_DATE normalize edilerek ISO 'yyyy-MM-dd' olarak kullanılır.",
+      "input_formats": [
+        "dd/MM/yyyy",
+        "yyyy-MM-dd"
+      ],
+      "notes": [
+        "Bu iki tarih alanı saat içermez.",
+        "Başlangıç dahil, bitiş tarihleri hariç mantığı istenirse sorguda açıkça belirtilmelidir."
+      ]
+    },
+    "departments_normalization": {
+      "description": "Departman adlarının varyasyonlarını tek standarda eşle.",
+      "mapping_examples": [
+        {
+          "from": [
+            "ERP Yazılım Destek",
+            "ERP Yazılım Destek Departmanı"
+          ],
+          "to": "ERP Yazılım Destek Departmanı"
+        },
+        {
+          "from": [
+            "HR Ürün",
+            "HR Ürün Müdürlüğü"
+          ],
+          "to": "HR Ürün Müdürlüğü"
+        }
+      ]
+    },
+    "intern_rules": {
+      "description": "Stajyer sayımları ve filtreleri.",
+      "rules": [
+        "Aktif stajyer sayısı: active_employee_definition filtresi + WORKING_STATUS='Stajyer'.",
+        "Toplam stajyer sayısı: WORKING_STATUS='Stajyer' (aktiflik şartı olmadan)."
+      ]
+    },
+    "safe_answering_policy": {
+      "description": "Kişisel bilgi sorgularında %99 emin olmadan yanıt verme; önce veriyle doğrula.",
+      "enforced": true,
+      "examples": [
+        "Çoklu ad eşleşmesinde TCKN/EMP_NO iste.",
+        "Belirsiz tarih aralığında kullanıcıdan netleştime iste.",
+        "Departman adı farklı varyasyonlarda gelirse normalize edip teyit et."
+      ]
+    },
+    "privacy": {
+      "description": "TCKN gibi hassas alanların sadece filtre amaçlı kullanımı; çıktıda maskeleme.",
+      "masking": {
+        "TCKN": "****{last4}"
+      }
+    },
+    "intent_detection": {
+      "description": "Kullanıcı sorusundan niyeti (intent) çıkart ve %99 emin olmadan yanıt üretme.",
+      "intents": [
+        "employee_counts",
+        "department_distribution",
+        "education_breakdown",
+        "leave_usage",
+        "leave_leaders",
+        "turnover_analysis",
+        "hiring_and_attrition"
+      ],
+      "policy": [
+        "Her yanıttan ÖNCE tespit edilen intent 'Intent: <name>' olarak yazılmalıdır.",
+        "Intent belirsizse clarifying sorular sorulmalı ve netleşmeden sonuç/SQL üretilmemelidir.",
+        "Kişisel doğrulama gerektiren durumlarda (kişi adı, departman varyasyonu, yıl belirsizliği) ek teyit soruları zorunludur."
+      ],
+      "examples": [
+        {
+          "q": "Bu yıl devir hızımız ne?",
+          "intent": "turnover_analysis"
+        },
+        {
+          "q": "Satışta kaç kişi çalışıyor?",
+          "intent": "employee_counts"
+        },
+        {
+          "q": "ERP yazılım geliştirmede son 6 ayda izinler",
+          "intent": "leave_usage"
+        }
+      ]
+    },
+    "turnover_analysis": {
+      "description": "Turnover (çalışan devir hızı) hesaplamalarını standartla.",
+      "fields": [
+        "WORK_S_DATE",
+        "WORK_E_DATE",
+        "EMP_NO",
+        "DEPARTMENT"
+      ],
+      "assumptions": [
+        "Varsayılan dönem yıllıktır. Yıl belirtilmemişse cari yıl kullanılır.",
+        "Ayrılan: WORK_E_DATE ilgili yıl aralığına düşen kayıtlar.",
+        "Başlangıç ve bitiş: yıl başı ve yıl sonu tarihindeki aktif çalışanlar."
+      ],
+      "formulas": {
+        "ayrilanlar": "COUNT(EMP_NO) WHERE WORK_E_DATE BETWEEN 'YYYY-01-01' AND 'YYYY-12-31'",
+        "baslangic": "COUNT(EMP_NO) WHERE WORK_S_DATE <= 'YYYY-01-01' AND (WORK_E_DATE IS NULL OR WORK_E_DATE >= 'YYYY-01-01')",
+        "bitis": "COUNT(EMP_NO) WHERE WORK_S_DATE <= 'YYYY-12-31' AND (WORK_E_DATE IS NULL OR WORK_E_DATE >= 'YYYY-12-31')",
+        "ortalama": "(baslangic + bitis) / 2.0",
+        "turnover_pct": "ayrilanlar / ortalama * 100"
+      },
+      "department_scope": "Aynı formüller GROUP BY DEPARTMENT ile departman bazında da uygulanır.",
+      "notes": [
+        "Çok küçük departmanlarda oranlar hassastır (tek ayrılma %100+ olabilir).",
+        "Sadece BI_CALISAN_BILGILILERI tablosu kullanılır.",
+        "Türkçe case-insensitive eşleşme ve tarih normalizasyonu genel kurallardan devralınır."
+      ],
+      "sql_snippets": {
+        "company_year": "WITH ayrilan AS (SELECT COUNT(*) c FROM BI_CALISAN_BILGILERI WHERE WORK_E_DATE IS NOT NULL), bas AS (SELECT COUNT(*) c FROM BI_CALISAN_BILGILERI WHERE WORK_S_DATE <= DATE 'YYYY-01-01' AND WORK_E_DATE IS NULL), bit AS (SELECT COUNT(*) c FROM BI_CALISAN_BILGILERI WHERE WORK_S_DATE <= DATE 'YYYY-12-31' AND WORK_E_DATE IS NULL) SELECT ayrilan.c AS ayrilan, ((bas.c + bit.c)/2.0) AS ort_calisan, (ayrilan.c/((bas.c+bit.c)/2.0))*100 AS turnover_pct FROM ayrilan, bas, bit;",
+        "by_department": "WITH e AS (SELECT DEPARTMENT, WORK_S_DATE, WORK_E_DATE FROM BI_CALISAN_BILGILERI) SELECT d.DEPARTMENT, ayr.c AS ayrilan, ((bas.c + bit.c)/2.0) AS ort_calisan, (CASE WHEN ((bas.c + bit.c)/2.0)>0 THEN ROUND(ayrilan*100.0/((bas.c+bit.c)/2.0),2) ELSE 0 END) AS turnover_pct FROM (SELECT DISTINCT DEPARTMENT FROM e) d LEFT JOIN (SELECT DEPARTMENT, COUNT(*) c FROM e WHERE WORK_E_DATE IS NOT NULL GROUP BY DEPARTMENT) ayr ON ayr.DEPARTMENT=d.DEPARTMENT LEFT JOIN (SELECT DEPARTMENT, COUNT(*) c FROM e WHERE WORK_S_DATE <= DATE 'YYYY-01-01' AND WORK_E_DATE IS NULL GROUP BY DEPARTMENT) bas ON bas.DEPARTMENT=d.DEPARTMENT LEFT JOIN (SELECT DEPARTMENT, COUNT(*) c FROM e WHERE WORK_S_DATE <= DATE 'YYYY-12-31' AND WORK_E_DATE IS NULL GROUP BY DEPARTMENT) bit ON bit.DEPARTMENT=d.DEPARTMENT;"
+      },
+      "enforced": true
+    },
+    "name_based_lookup_join": {
+      "version": "1.2.1",
+      "description": "Kullanıcı isim girişiyle çalışanı bul, tekilleştir ve EMP_NO üzerinden izin tablolarına join yap.",
+      "depends_on": [
+        "string_normalization",
+        "identity_matching",
+        "safe_answering_policy"
+      ],
+      "normalization": {
+        "input": "Kullanıcı girdisini TRIM et; çoklu boşlukları tek boşluğa indir; Türkçe UPPER (i↔İ, ı↔I, ç↔Ç, ğ↔Ğ, ş↔Ş, ö↔Ö, ü↔Ü).",
+        "employee_full_name": "FULL_NAME alanında TRIM + çoklu boşluğu tek boşluk + Türkçe UPPER uygula.",
+        "partial_first_name_rule": "Sadece ad verildiyse FULL_NAME’in ilk kelimesiyle eşleştir."
+      },
+      "matching_priority": [
+        "TCKN (varsa — sadece filtre amaçlı, çıktıda maskelenir)",
+        "EMP_NO",
+        "NAME+SURNAME (izin tablosunda varsa)",
+        "FULL_NAME (gösterim alanı; tekilleşme için ad+soyad eşitliğinde kullanılabilir)"
+      ],
+      "disambiguation_policy": {
+        "require_exact_fullname_when_two_plus_tokens": true,
+        "on_multiple_matches": "ASK_FOR(EMP_NO_OR_TCKN_OR_SURNAME)",
+        "on_partial_firstname": "LIST_CANDIDATES_AND_ASK_CLARIFY",
+        "deny_auto_pick_when_collision_possible": true
+      },
+      "join_flow": [
+        "1) Çalışan tablosunda isimle tekil kaydı bul (FULL_NAME).",
+        "2) EMP_NO al.",
+        "3) İzin tablosunda SICIL_NUMARASI = SICIL_NUMARASI ile join yap.",
+        "4) Kullanıcı intentine göre izin türü/ dönem/ birim kurallarını uygula."
+      ],
+      "leave_rules_application": {
+        "annual_vs_mahsuben": "“Yıllık İzin” ve “Yıllık İzne Mahsuben” ayrı tutulur; kullanıcı hangisini isterse sadece onu raporla.",
+        "mutabakat": "Mutabakatlı izinler hariç tutulur.",
+        "units": "Gün ve Saat ayrı raporlanır; Saat → Gün dönüşümü yapılmaz.",
+        "active_filter": "Kişi-bazlı geçmiş izin toplamlarında aktif filtre kaldırılabilir; sayım/dağılım raporlarında varsayılan aktif filtre uygulanır."
+      },
+      "sql_snippets": {
+        "by_fullname_exact": "-- Ad + Soyad verildiğinde (tek boşluk kuralıyla tam eşitlik)\nWITH emp AS (\n  SELECT e.SICIL_NUMARASI, e.AD_SOYAD\n  FROM BI_CALISAN_BILGILERI e\n  WHERE UPPER(TRIM(regexp_replace(e.FULL_NAME, '\\s+', ' ', 'g'))) = UPPER(TRIM(regexp_replace(:FULLNAME, '\\s+', ' ', 'g')))\n  LIMIT 1\n)\nSELECT emp.AD_SOYAD,\n       SUM(CASE WHEN i.TUR='Gün'  THEN i.KULLANILAN ELSE 0 END) AS TOPLAM_GUN,\n       SUM(CASE WHEN i.TUR='Saat' THEN i.KULLANILAN ELSE 0 END) AS TOPLAM_SAAT\nFROM BI_AYLIK_IZIN_KULLANIM i\nJOIN emp ON i.SICIL_NUMARASI = emp.SICIL_NUMARASI\nWHERE i.IZIN_TURU = :IZIN_TURU\n  AND UPPER(COALESCE(i.IZIN_TURU,'')) NOT LIKE '%MUTABAKAT%'\nGROUP BY emp.AD_SOYAD;",
+        "by_firstname_only": "-- Sadece ad verildiğinde (ilk kelime eşleşmesi; uygulama katmanında COUNT=1 doğrulaması yap)\nWITH params AS (\n  SELECT UPPER(TRIM(:AD)) AS AD\n), emp AS (\n  SELECT e.SICIL_NUMARASI, e.AD_SOYAD\n  FROM BI_CALISAN_BILGILERI e CROSS JOIN params p\n  WHERE split_part(UPPER(regexp_replace(TRIM(e.FULL_NAME), '\\s+', ' ', 'g')), ' ', 1) = p.AD\n  LIMIT 1\n)\nSELECT emp.AD_SOYAD,\n       SUM(CASE WHEN i.TUR='Gün'  THEN i.KULLANILAN ELSE 0 END) AS TOPLAM_GUN,\n       SUM(CASE WHEN i.TUR='Saat' THEN i.KULLANILAN ELSE 0 END) AS TOPLAM_SAAT\nFROM BI_AYLIK_IZIN_KULLANIM i\nJOIN emp ON i.SICIL_NUMARASI = emp.SICIL_NUMARASI\nWHERE i.IZIN_TURU = :IZIN_TURU\n  AND UPPER(COALESCE(i.IZIN_TURU,'')) NOT LIKE '%MUTABAKAT%'\nGROUP BY emp.AD_SOYAD;"
+      },
+      "security_privacy": {
+        "tckn_usage": "TCKN sadece kimlik doğrulama/filtre için; çıktıdaki TCKN maske formatı: ****{last4}.",
+        "safe_answering": "Tekilleşmeden kişi-bazlı sonuç verme. Gerekirse EMP_NO/soyad iste."
+      },
+      "typo_tolerance": {
+        "enabled": true,
+        "token_edit_distance_max": 1,
+        "apply_only_if_single_candidate_remains": true,
+        "require_user_confirmation_before_use": true
+      },
+      "audit_meta": {
+        "emit_fields": [
+          "match_strategy",
+          "candidate_count",
+          "chosen_key",
+          "needs_user_confirmation"
+        ]
+      }
+    }
+  },
+  "sql_snippets": {
+    "counts_active_employees": "SELECT COUNT(*) FROM BI_CALISAN_BILGILERI WHERE WORK_E_DATE IS NULL;",
+    "dept_distribution_active": "SELECT DEPARTMENT, COUNT(*) AS KISI_SAYISI FROM BI_CALISAN_BILGILERI WHERE WORK_E_DATE IS NULL GROUP BY DEPARTMENT ORDER BY KISI_SAYISI DESC;",
+    "active_interns": "SELECT COUNT(*) FROM BI_CALISAN_BILGILERI WHERE WORK_E_DATE IS NULL AND WORKING_STATUS='Stajyer';"
+  },
+  "tests": [
+    {
+      "name": "aktif_sayimi_zorunlu",
+      "assertion": "Kaç çalışan var? sorusunda aktif filtre uygulanmalı",
+      "sql": "SELECT COUNT(*) FROM BI_CALISAN_BILGILERI WHERE WORK_E_DATE IS NULL;"
+    },
+    {
+      "name": "turkce_insensitive_arama",
+      "assertion": "DEPARTMENT LIKE 'İnsan, Kültür ve İletişim%' araması Turkish-case-insensitive çalışmalı",
+      "hint": "UPPER(TRIM(DEPARTMENT)) ve girdide de UPPER/TRIM + TR locale kullan"
+    }
+  ]
+}

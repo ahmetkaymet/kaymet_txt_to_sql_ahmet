@@ -21,7 +21,8 @@ from langchain_core.prompts import PromptTemplate, ChatPromptTemplate
 from langchain_core.output_parsers import StrOutputParser
 from langchain_openai import ChatOpenAI
 from dotenv import load_dotenv
-from catalog_helper import get_catalog_context, get_catalog_summary
+import json
+from pathlib import Path
 
 load_dotenv()
 if not os.getenv("OPENAI_API_KEY"):
@@ -109,66 +110,32 @@ def get_db_connection():
     return pool.get_connection()
 
 
-# Global cache for database schema and sample data
-_schema_cache = {}
-_schema_cache_ttl = 3600  # 1 hour (was 5 minutes) - 5x faster
-_sample_data_cache = {}
-_sample_data_cache_ttl = 3600  # 1 hour (was 10 minutes) - 5x faster
-
-def get_cached_schema() -> str:
-    """Get cached database schema or fetch and cache it"""
-    global _schema_cache
-    current_time = time.time()
-    
-    if 'schema' not in _schema_cache or \
-       current_time - _schema_cache['timestamp'] > _schema_cache_ttl:
-        logger.info("Schema cache expired, fetching fresh schema...")
-        _schema_cache['schema'] = _fetch_db_schema()
-        _schema_cache['timestamp'] = current_time
-        logger.info("Schema cache updated")
-    else:
-        logger.info("Using cached schema")
-    
-    return _schema_cache['schema']
+# NO CACHE - Always fetch fresh data to ensure business rules are current
+def get_fresh_schema() -> str:
+    """Get fresh database schema - NO CACHE to ensure business rules are current"""
+    logger.info("Fetching fresh schema (no cache)...")
+    return _fetch_db_schema()
 
 
-def get_cached_sample_data() -> str:
-    """Get cached sample data or fetch and cache it"""
-    global _sample_data_cache
-    current_time = time.time()
-    
-    if 'sample_data' not in _sample_data_cache or \
-       current_time - _sample_data_cache['timestamp'] > _sample_data_cache_ttl:
-        logger.info("Sample data cache expired, fetching fresh data...")
-        _sample_data_cache['sample_data'] = _fetch_sample_data()
-        _sample_data_cache['timestamp'] = current_time
-        logger.info("Sample data cache updated")
-    else:
-        logger.info("Using cached sample data")
-    
-    return _sample_data_cache['sample_data']
+def get_fresh_sample_data() -> str:
+    """Get fresh sample data - NO CACHE to ensure business rules are current"""
+    logger.info("Fetching fresh sample data (no cache)...")
+    return _fetch_sample_data()
 
 
 def _fetch_db_schema() -> str:
-    """Fetch database schema from database"""
+    """Fetch database schema from database - BI_CALISAN_BILGILERI and BI_AYLIK_IZIN_KULLANIM tables"""
     from config.oracle_config import get_connection_pool
     pool = get_connection_pool()
     
     with pool.get_connection() as conn:
         cursor = conn.cursor()
         
-        # Get all tables
-        cursor.execute("""
-            SELECT table_name 
-            FROM user_tables 
-            ORDER BY table_name
-        """)
-        tables = cursor.fetchall()
+        # Get both tables
+        tables = ["BI_CALISAN_BILGILERI", "BI_AYLIK_IZIN_KULLANIM"]
+        schema_text = "Database Schema (HR Tables):\n\n"
         
-        schema_text = "Database Schema:\n\n"
-        
-        for table in tables:
-            table_name = table[0]
+        for table_name in tables:
             cursor.execute(f"""
                 SELECT column_name, data_type, nullable
                 FROM user_tab_columns
@@ -183,26 +150,44 @@ def _fetch_db_schema() -> str:
                 nullable = "NULL" if col[2] == 'Y' else "NOT NULL"
                 schema_text += f"  {col[0]} ({col[1]}) {nullable}\n"
             schema_text += "\n"
-            
+        
+        schema_text += "IMPORTANT COLUMN MAPPINGS:\n"
+        schema_text += "BI_CALISAN_BILGILERI:\n"
+        schema_text += "- SICIL_NUMARASI: Employee ID (Primary Key)\n"
+        schema_text += "- AD_SOYAD: Full Name\n"
+        schema_text += "- WORK_E_DATE: End Date (VARCHAR2 format like '8/12/25' or NULL for active)\n"
+        schema_text += "- WORK_S_DATE: Start Date (TIMESTAMP)\n"
+        schema_text += "\n"
+        schema_text += "BI_AYLIK_IZIN_KULLANIM:\n"
+        schema_text += "- SICIL_NUMARASI: Employee ID (Foreign Key to BI_CALISAN_BILGILERI.SICIL_NUMARASI)\n"
+        schema_text += "- AD_SOYAD: Employee Name\n"
+        schema_text += "- IZIN_TURU: Leave Type (Yıllık İzin, Doğum Günü İzni, etc.)\n"
+        schema_text += "- KULLANILAN: Used Amount (days or hours)\n"
+        schema_text += "- TUR: Unit (Gün or Saat)\n"
+        schema_text += "- YILI: Year\n"
+        schema_text += "- AY: Month\n"
+        schema_text += "\n"
+        
         return schema_text
 
 
 def _fetch_sample_data() -> str:
-    """Fetch sample data from database"""
+    """Fetch sample data from database - BI_CALISAN_BILGILERI and BI_AYLIK_IZIN_KULLANIM tables"""
     from config.oracle_config import get_connection_pool
     pool = get_connection_pool()
     
     with pool.get_connection() as conn:
         cursor = conn.cursor()
-        cursor.execute("SELECT table_name FROM user_tables")
-        tables = [row[0] for row in cursor.fetchall()]
         
-        sample_data = "\nSample Data Examples:\n"
-        for table in tables:
-            cursor.execute(f"SELECT * FROM \"{table}\" WHERE ROWNUM <= 3")
+        # Get sample data from both tables
+        tables = ["BI_CALISAN_BILGILERI", "BI_AYLIK_IZIN_KULLANIM"]
+        sample_data = "\nSample Data Examples (HR Tables):\n"
+        
+        for table_name in tables:
+            cursor.execute(f"SELECT * FROM \"{table_name}\" WHERE ROWNUM <= 3")
             rows = cursor.fetchall()
             if rows:
-                sample_data += f"\n{table} sample rows:\n"
+                sample_data += f"\n{table_name} sample rows:\n"
                 columns = [description[0] for description in cursor.description]
                 for row in rows:
                     sample_data += f"- {', '.join([f'{columns[i]}: {value}' for i, value in enumerate(row)])}\n"
@@ -210,63 +195,269 @@ def _fetch_sample_data() -> str:
         return sample_data
 
 
+def get_ruleset_context() -> str:
+    """Get ruleset context from JSON files instead of data catalogs - ALWAYS FRESH"""
+    try:
+        import datetime
+        current_time = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+        
+        context_parts = []
+        context_parts.append("HR VERİ KURALLARI VE ŞEMASI:")
+        context_parts.append("=" * 50)
+        context_parts.append(f"GÜNCEL TARİH: {current_time}")
+        context_parts.append("=" * 50)
+        
+        # Load both rulesets
+        rulesets = []
+        
+        # Çalışan ruleset
+        calisan_path = Path("ruleset/calisan_ruleset_v1.2.1.json")
+        if calisan_path.exists():
+            with open(calisan_path, 'r', encoding='utf-8') as f:
+                calisan_ruleset = json.load(f)
+                rulesets.append(("ÇALIŞAN", calisan_ruleset))
+        
+        # İzin ruleset
+        izin_path = Path("ruleset/izin_ruleset_v3.2.1.json")
+        if izin_path.exists():
+            with open(izin_path, 'r', encoding='utf-8') as f:
+                izin_ruleset = json.load(f)
+                rulesets.append(("İZİN", izin_ruleset))
+        
+        # Process each ruleset
+        for ruleset_name, ruleset in rulesets:
+            context_parts.append(f"\n{ruleset_name} RULESET:")
+            context_parts.append("-" * 30)
+            
+            # Table information
+            for table in ruleset.get("tables", []):
+                table_name = table.get("table", "")
+                context_parts.append(f"\nTablo: {table_name}")
+                
+                # Primary key
+                pk = table.get("primary_key", "")
+                if pk:
+                    if isinstance(pk, list):
+                        context_parts.append(f"Anahtar: {', '.join(pk)}")
+                    else:
+                        context_parts.append(f"Anahtar: {pk}")
+                
+                # Foreign keys
+                fks = table.get("foreign_keys", [])
+                if fks:
+                    context_parts.append("Foreign Keys:")
+                    for fk in fks:
+                        context_parts.append(f"  - {fk.get('column', '')} -> {fk.get('references', '')}")
+                
+                context_parts.append("Kolonlar:")
+                
+                for column in table.get("columns", []):
+                    col_name = column.get("name", "")
+                    col_type = column.get("type", "")
+                    nullable = "NULL" if column.get("nullable", True) else "NOT NULL"
+                    description = column.get("description", "")
+                    context_parts.append(f"  - {col_name} ({col_type}) {nullable}: {description}")
+        
+        # Business rules from both rulesets - COMPLETE ALL RULES
+        context_parts.append("\n\nİŞ KURALLARI (TÜM DETAYLAR):")
+        context_parts.append("=" * 50)
+        
+        for ruleset_name, ruleset in rulesets:
+            business_rules = ruleset.get("business_rules", {})
+            
+            if business_rules:
+                context_parts.append(f"\n{ruleset_name} İş Kuralları:")
+                context_parts.append("-" * 40)
+                
+                # Process ALL business rules - no filtering
+                for rule_name, rule_data in business_rules.items():
+                    context_parts.append(f"\n{rule_name.upper()}:")
+                    
+                    # Add description
+                    if isinstance(rule_data, dict) and "description" in rule_data:
+                        context_parts.append(f"  Açıklama: {rule_data['description']}")
+                    
+                    # Add rules array
+                    if isinstance(rule_data, dict) and "rules" in rule_data:
+                        context_parts.append("  Kurallar:")
+                        for rule_text in rule_data["rules"]:
+                            context_parts.append(f"    - {rule_text}")
+                    
+                    # Add formulas
+                    if isinstance(rule_data, dict) and "formulas" in rule_data:
+                        context_parts.append("  Formüller:")
+                        for formula_name, formula_value in rule_data["formulas"].items():
+                            context_parts.append(f"    {formula_name}: {formula_value}")
+                    
+                    # Add assumptions
+                    if isinstance(rule_data, dict) and "assumptions" in rule_data:
+                        context_parts.append("  Varsayımlar:")
+                        for assumption in rule_data["assumptions"]:
+                            context_parts.append(f"    - {assumption}")
+                    
+                    # Add SQL snippets
+                    if isinstance(rule_data, dict) and "sql_snippets" in rule_data:
+                        context_parts.append("  SQL Örnekleri:")
+                        for snippet_name, snippet_value in rule_data["sql_snippets"].items():
+                            context_parts.append(f"    {snippet_name}: {snippet_value}")
+                    
+                    # Add enforced flag
+                    if isinstance(rule_data, dict) and "enforced" in rule_data:
+                        context_parts.append(f"  Zorunlu: {rule_data['enforced']}")
+                    
+                    # Add level
+                    if isinstance(rule_data, dict) and "level" in rule_data:
+                        context_parts.append(f"  Seviye: {rule_data['level']}")
+                    
+                    # Add applies_to
+                    if isinstance(rule_data, dict) and "applies_to" in rule_data:
+                        context_parts.append(f"  Uygulanan Tablolar: {', '.join(rule_data['applies_to'])}")
+                    
+                    # Add depends_on
+                    if isinstance(rule_data, dict) and "depends_on" in rule_data:
+                        context_parts.append(f"  Bağımlılıklar: {', '.join(rule_data['depends_on'])}")
+                    
+                    # Add normalization rules
+                    if isinstance(rule_data, dict) and "normalization" in rule_data:
+                        context_parts.append("  Normalizasyon:")
+                        for norm_key, norm_value in rule_data["normalization"].items():
+                            context_parts.append(f"    {norm_key}: {norm_value}")
+                    
+                    # Add priority
+                    if isinstance(rule_data, dict) and "priority" in rule_data:
+                        context_parts.append(f"  Öncelik: {rule_data['priority']}")
+                    
+                    # Add exclude_types
+                    if isinstance(rule_data, dict) and "exclude_types" in rule_data:
+                        context_parts.append(f"  Hariç Tutulan Türler: {', '.join(rule_data['exclude_types'])}")
+                    
+                    # Add units
+                    if isinstance(rule_data, dict) and "units" in rule_data:
+                        context_parts.append("  Birimler:")
+                        for unit_key, unit_value in rule_data["units"].items():
+                            context_parts.append(f"    {unit_key}: {unit_value}")
+                    
+                    # Add sql_guidance
+                    if isinstance(rule_data, dict) and "sql_guidance" in rule_data:
+                        context_parts.append("  SQL Rehberi:")
+                        for guidance in rule_data["sql_guidance"]:
+                            context_parts.append(f"    - {guidance}")
+                    
+                    # Add notes
+                    if isinstance(rule_data, dict) and "notes" in rule_data:
+                        context_parts.append("  Notlar:")
+                        for note in rule_data["notes"]:
+                            context_parts.append(f"    - {note}")
+                    
+                    # Add department_scope
+                    if isinstance(rule_data, dict) and "department_scope" in rule_data:
+                        context_parts.append(f"  Departman Kapsamı: {rule_data['department_scope']}")
+                    
+                    # Add full_name_note
+                    if isinstance(rule_data, dict) and "full_name_note" in rule_data:
+                        context_parts.append(f"  Ad Soyad Notu: {rule_data['full_name_note']}")
+                    
+                    # Add separate_unit_output
+                    if isinstance(rule_data, dict) and "separate_unit_output" in rule_data:
+                        context_parts.append(f"  Ayrı Birim Çıktısı: {rule_data['separate_unit_output']}")
+                    
+                    # Add exclude_mutabakat
+                    if isinstance(rule_data, dict) and "exclude_mutabakat" in rule_data:
+                        context_parts.append(f"  Mutabakat Hariç: {rule_data['exclude_mutabakat']}")
+                    
+                    # Add sum_days and sum_hours
+                    if isinstance(rule_data, dict) and "sum_days" in rule_data:
+                        context_parts.append(f"  Gün Toplamı: {rule_data['sum_days']}")
+                    if isinstance(rule_data, dict) and "sum_hours" in rule_data:
+                        context_parts.append(f"  Saat Toplamı: {rule_data['sum_hours']}")
+                    
+                    # Add version
+                    if isinstance(rule_data, dict) and "version" in rule_data:
+                        context_parts.append(f"  Versiyon: {rule_data['version']}")
+                    
+                    # Add fields
+                    if isinstance(rule_data, dict) and "fields" in rule_data:
+                        context_parts.append(f"  Alanlar: {', '.join(rule_data['fields'])}")
+                    
+                    # Add any other fields we might have missed
+                    if isinstance(rule_data, dict):
+                        for key, value in rule_data.items():
+                            if key not in ["description", "rules", "formulas", "assumptions", "sql_snippets", 
+                                         "enforced", "level", "applies_to", "depends_on", "normalization", 
+                                         "priority", "exclude_types", "units", "sql_guidance", "notes", 
+                                         "department_scope", "full_name_note", "separate_unit_output", 
+                                         "exclude_mutabakat", "sum_days", "sum_hours", "version", "fields"]:
+                                context_parts.append(f"  {key}: {value}")
+        
+        return "\n".join(context_parts)
+        
+    except Exception as e:
+        logger.error(f"Error reading ruleset: {e}")
+        return f"Error reading ruleset: {str(e)}"
+
+
 def get_db_schema() -> str:
-    """Retrieves cached database schema with table and column descriptions"""
-    return get_cached_schema()
+    """Retrieves fresh database schema with table and column descriptions - NO CACHE"""
+    return get_fresh_schema()
 
 def get_table_info() -> str:
-    """Get basic table information"""
+    """Get basic table information - BI_CALISAN_BILGILERI and BI_AYLIK_IZIN_KULLANIM"""
     try:
-        import sqlite3
-        conn = sqlite3.connect('data.db')
-        cursor = conn.cursor()
+        from config.oracle_config import get_connection_pool
+        pool = get_connection_pool()
         
-        cursor.execute("SELECT name FROM sqlite_master WHERE type='table'")
-        tables = cursor.fetchall()
-        
-        table_info = "Available Tables:\n"
-        for table in tables:
-            table_name = table[0]
-            cursor.execute(f"PRAGMA table_info({table_name})")
-            cursor.execute(f"PRAGMA table_info(\"{table_name}\")")
-            columns = cursor.fetchall()
+        with pool.get_connection() as conn:
+            cursor = conn.cursor()
             
-            table_info += f"\n{table_name}:\n"
-            for col in columns:
-                col_name, col_type = col[1], col[2]
-                table_info += f"  - {col_name} ({col_type})\n"
+            # Get both tables information
+            tables = ["BI_CALISAN_BILGILERI", "BI_AYLIK_IZIN_KULLANIM"]
+            table_info = "Available HR Tables:\n"
+            
+            for table_name in tables:
+                cursor.execute(f"""
+                    SELECT column_name, data_type, nullable
+                    FROM user_tab_columns
+                    WHERE table_name = '{table_name}'
+                    ORDER BY column_id
+                """)
+                columns = cursor.fetchall()
+                
+                table_info += f"\n{table_name}:\n"
+                for col in columns:
+                    col_name, col_type, nullable = col[0], col[1], col[2]
+                    nullable_str = "NULL" if nullable == 'Y' else "NOT NULL"
+                    table_info += f"  - {col_name} ({col_type}) {nullable_str}\n"
         
-        conn.close()
         return table_info
     except Exception as e:
         logger.error(f"Error getting table info: {e}")
         return "Table information not available"
 
 def get_sample_data() -> str:
-    """Get sample data from tables"""
+    """Get sample data from tables - BI_CALISAN_BILGILERI and BI_AYLIK_IZIN_KULLANIM"""
     try:
-        import sqlite3
-        conn = sqlite3.connect('data.db')
-        cursor = conn.cursor()
+        from config.oracle_config import get_connection_pool
+        pool = get_connection_pool()
         
-        cursor.execute("SELECT name FROM sqlite_master WHERE type='table'")
-        tables = cursor.fetchall()
+        with pool.get_connection() as conn:
+            cursor = conn.cursor()
+            
+            # Get sample data from both tables
+            tables = ["BI_CALISAN_BILGILERI", "BI_AYLIK_IZIN_KULLANIM"]
+            sample_data = "\nSample Data Examples (HR Tables):\n"
+            
+            for table_name in tables:
+                try:
+                    cursor.execute(f'SELECT * FROM "{table_name}" WHERE ROWNUM <= 3')
+                    rows = cursor.fetchall()
+                    if rows:
+                        sample_data += f"\n{table_name} sample rows:\n"
+                        columns = [description[0] for description in cursor.description]
+                        for row in rows:
+                            sample_data += f"- {', '.join([f'{columns[i]}: {value}' for i, value in enumerate(row)])}\n"
+                except Exception as e:
+                    sample_data += f"\n{table_name}: Error reading data - {e}\n"
         
-        sample_data = "\nSample Data Examples:\n"
-        for table in tables:
-            table_name = table[0]
-            try:
-                cursor.execute(f'SELECT * FROM "{table_name}" LIMIT 3')
-                rows = cursor.fetchall()
-                if rows:
-                    sample_data += f"\n{table_name} sample rows:\n"
-                    columns = [description[0] for description in cursor.description]
-                    for row in rows:
-                        sample_data += f"- {', '.join([f'{columns[i]}: {value}' for i, value in enumerate(row)])}\n"
-            except Exception as e:
-                sample_data += f"\n{table_name}: Error reading data - {e}\n"
-        
-        conn.close()
         return sample_data
     except Exception as e:
         logger.error(f"Error getting sample data: {e}")
@@ -285,10 +476,10 @@ def create_unified_langchain_pipeline() -> LLMChain:
         api_key=os.getenv("OPENAI_API_KEY")
     )
     
-    # Create unified prompt template optimized for HR data
+    # Create unified prompt template optimized for HR data - BI_CALISAN_BILGILERI and BI_AYLIK_IZIN_KULLANIM tables
     prompt_template = PromptTemplate(
-        input_variables=["natural_query", "db_schema", "table_info", "sample_data", "catalog_context", "catalog_summary"],
-        template="""You are Aimet, an expert HR Data Analyst with 15+ years of experience in HR analytics, employee retention, and workforce planning. You MUST think like a human HR expert and analyze the data catalogs to understand the business context.
+        input_variables=["natural_query", "db_schema", "table_info", "sample_data", "ruleset_context"],
+        template="""You are Aimet, an expert HR Data Analyst with 15+ years of experience in HR analytics, employee retention, and workforce planning. You MUST think like a human HR expert and analyze the ruleset to understand the business context.
 
 AVAILABLE TABLES AND COLUMNS:
 {db_schema}
@@ -297,62 +488,109 @@ AVAILABLE TABLES AND COLUMNS:
 
 {sample_data}
 
-DATA CATALOGS:
-{catalog_context}
+🚨 CRITICAL BUSINESS RULES - ANALYZE THOROUGHLY:
+{ruleset_context}
 
 USER QUERY: {natural_query}
 
-CRITICAL INSTRUCTIONS:
-1. **THINK LIKE AN HR EXPERT**: Analyze the user's question from an HR professional perspective. What business insights are they really looking for?
-2. **EXAMINE DATA CATALOGS CAREFULLY**: The data catalogs contain detailed explanations of what each table and column represents. Read them thoroughly to understand the business context.
-3. **USE ONLY EXISTING TABLES**: Look at the database schema above - these are the ONLY tables you can use. Never create or reference tables that don't exist.
-4. **GENERATE MEANINGFUL SQL**: Create SQL queries that actually answer the user's question with real business value.
-5. **ALWAYS INCLUDE COLUMN NAMES**: Never use SELECT * - always specify the exact columns you need.
-6. **USE DOUBLE QUOTES**: Wrap table and column names in double quotes: "TableName", "ColumnName"
-7. **NO SEMICOLON**: Don't end SQL with semicolon
-8. **NEVER RETURN SELECT 1 FROM DUAL**: This is meaningless and shows you didn't understand the question
+🔥 ULTRA-CRITICAL INSTRUCTIONS FOR BUSINESS RULES ANALYSIS:
 
-EXAMPLES OF HR EXPERT THINKING:
-- For "employee turnover rate by department": 
-  * Think: Turnover = (Employees who left / Total employees) * 100
-  * Look for: EXITDATE, EMPLOYEE_STATUS, DEPARTMENTTYPE
-  * Query: Calculate percentage of employees with EXITDATE not null, grouped by DEPARTMENTTYPE
-- For "average experience years for candidates by job title": 
-  * Think: Recruitment data analysis, candidate experience levels by position
-  * Look for: RECRUITMENT_DATA table, YEARS_OF_EXPERIENCE, JOB_TITLE columns
-  * Query: Calculate AVG(YEARS_OF_EXPERIENCE) grouped by JOB_TITLE from RECRUITMENT_DATA
-- For "average desired salary by position": 
-  * Think: Recruitment data, salary expectations, market analysis
-  * Look for: RECRUITMENT_DATA table, DESIRED_SALARY, JOB_TITLE columns
-  * Query: Calculate AVG(DESIRED_SALARY) grouped by JOB_TITLE from RECRUITMENT_DATA
-- For "employee engagement by department": 
-  * Think: Survey data, satisfaction scores, team performance
-  * Look for: EMPLOYEE_ENGAGEMENT_SURVEY table, satisfaction columns, department columns
+1. **DEEP BUSINESS RULES ANALYSIS** 🎯:
+   - READ EVERY SINGLE BUSINESS RULE in the ruleset context above
+   - UNDERSTAND the formulas, constraints, and logic for each rule
+   - APPLY the exact business logic specified in the ruleset
+   - PAY SPECIAL ATTENTION to turnover_analysis, leave_inclusion_policies, string_normalization, and name_matching rules
 
-SPECIFIC HR ANALYTICS EXAMPLES:
-- Turnover analysis: Use EXITDATE, EMPLOYEE_STATUS, DEPARTMENTTYPE from EMPLOYEE_DATA
-- Performance analysis: Use PERFORMANCE_SCORE, CURRENT_EMPLOYEE_RATING, DEPARTMENTTYPE
-- Recruitment analysis: Use RECRUITMENT_DATA table for hiring metrics (YEARS_OF_EXPERIENCE, JOB_TITLE, DESIRED_SALARY)
-- Engagement analysis: Use EMPLOYEE_ENGAGEMENT_SURVEY table for satisfaction metrics
+2. **TURNOVER ANALYSIS RULES** 📊:
+   - Use EXACT formulas from turnover_analysis section
+   - ayrilanlar: COUNT(EMP_NO) WHERE WORK_E_DATE IS NOT NULL
+   - baslangic: COUNT(EMP_NO) WHERE WORK_S_DATE <= 'YYYY-01-01' AND WORK_E_DATE IS NULL
+   - bitis: COUNT(EMP_NO) WHERE WORK_S_DATE <= 'YYYY-12-31' AND WORK_E_DATE IS NULL
+   - ortalama: (baslangic + bitis) / 2.0
+   - turnover_pct: ayrilanlar / ortalama * 100
 
-RECRUITMENT DATA SPECIFIC EXAMPLES:
-- "average experience years for candidates by job title" → RECRUITMENT_DATA table, AVG(YEARS_OF_EXPERIENCE) GROUP BY JOB_TITLE
-- "candidate count by education level" → RECRUITMENT_DATA table, COUNT(*) GROUP BY EDUCATION_LEVEL
-- "salary expectations by position" → RECRUITMENT_DATA table, AVG(DESIRED_SALARY) GROUP BY JOB_TITLE
+3. **LEAVE ANALYSIS RULES** 🏖️:
+   - Follow leave_inclusion_policies exactly
+   - annual_leave_default: exclude_mutabakat = true, sum_days = true, sum_hours = false
+   - leave_types_split: Yıllık İzin vs Yıllık İzne Mahsuben are SEPARATE types
+   - Use correct IZIN_TURU filtering as specified in rules
+
+4. **STRING NORMALIZATION RULES** 🔤:
+   - Apply Turkish character normalization: i→İ, ı→I, ç→Ç, ğ→Ğ, ş→Ş, ö→Ö, ü→Ü
+   - Case-insensitive searches for ALL text fields
+   - Normalize both user input AND database values
+
+5. **NAME MATCHING PRIORITY** 👤:
+   - Priority order: KIMLIK_NO > EMP_NO > (UPPER(TRIM(NAME)), UPPER(TRIM(SURNAME)))
+   - Use exact matching logic from name_matching rules
+
+6. **TABLE CONSTRAINTS** 📋:
+   - ONLY USE: BI_CALISAN_BILGILERI and BI_AYLIK_IZIN_KULLANIM
+   - ACTIVE EMPLOYEE: WORK_E_DATE IS NULL (VARCHAR2 type, not DATE - NO >= comparisons)
+   - COLUMN MAPPINGS: SICIL_NUMARASI (not EMP_NO), AD_SOYAD (not FULL_NAME)
+   - JOIN: Use SICIL_NUMARASI for joining tables (NOT SICIL)
+   - WORK_E_DATE: VARCHAR2 format like '8/12/25' or NULL for active employees
+
+7. **BUSINESS RULE ENFORCEMENT** ⚖️:
+   - If a rule has "enforced": true, it MUST be applied
+   - Follow all assumptions, formulas, and constraints exactly
+   - Use provided SQL snippets as templates when available
+
+8. **GENERATE MEANINGFUL SQL**: Create SQL queries that actually answer the user's question with real business value.
+9. **ALWAYS INCLUDE COLUMN NAMES**: Never use SELECT * - always specify the exact columns you need.
+10. **USE DOUBLE QUOTES**: Wrap table and column names in double quotes: "BI_CALISAN_BILGILERI", "SICIL_NUMARASI"
+11. **NO SEMICOLON**: Don't end SQL with semicolon
+12. **NEVER RETURN SELECT 1 FROM DUAL**: This is meaningless and shows you didn't understand the question
+
+EXAMPLES WITH BUSINESS RULES ANALYSIS:
+- For "2024 turnover analizi": 
+  * Business Rules: Apply EXACT turnover formulas from turnover_analysis section
+  * ayrilanlar: COUNT(*) WHERE WORK_E_DATE IS NOT NULL
+  * baslangic: COUNT(*) WHERE WORK_S_DATE <= '2024-01-01' AND WORK_E_DATE IS NULL
+  * bitis: COUNT(*) WHERE WORK_S_DATE <= '2024-12-31' AND WORK_E_DATE IS NULL
+  * ortalama: (baslangic + bitis) / 2.0
+  * turnover_pct: ayrilanlar / ortalama * 100
+
+- For "Yıllık izin kullanımı": 
+  * Business Rules: Follow leave_types_split rule - Yıllık İzin is SEPARATE from Yıllık İzne Mahsuben
+  * Apply leave_inclusion_policies: exclude_mutabakat = true, sum_days = true
+  * Query: SELECT e.AD_SOYAD, SUM(i.KULLANILAN) FROM BI_CALISAN_BILGILERI e JOIN BI_AYLIK_IZIN_KULLANIM i ON e.SICIL_NUMARASI = i.SICIL_NUMARASI WHERE i.IZIN_TURU = 'Yıllık İzin' AND e.WORK_E_DATE IS NULL GROUP BY e.AD_SOYAD
+
+- For "Celil'in izinleri": 
+  * Business Rules: Apply string_normalization and name_matching rules
+  * Normalize Turkish characters: CELİL, celil, CeLiL all match
+  * Use name matching priority: KIMLIK_NO > EMP_NO > (NAME, SURNAME)
+  * Query: Apply UPPER() normalization for case-insensitive matching
+
+- For "employee count by department": 
+  * Business Rules: Apply active employee filter from business rules
+  * Query: SELECT DEPARTMENT, COUNT(*) FROM BI_CALISAN_BILGILERI WHERE WORK_E_DATE IS NULL GROUP BY DEPARTMENT
+
+SPECIFIC HR ANALYTICS:
+- Employee counts: Use SICIL_NUMARASI with active filter (WORK_E_DATE IS NULL)
+- Department analysis: Use DEPARTMENT column from BI_CALISAN_BILGILERI
+- Leave analysis: Use BI_AYLIK_IZIN_KULLANIM table with IZIN_TURU, KULLANILAN, TUR columns
+- Join tables: Use SICIL_NUMARASI to join BI_CALISAN_BILGILERI and BI_AYLIK_IZIN_KULLANIM
+- Leave types: Yıllık İzin, Doğum Günü İzni, Saatlik Mazeret İzni, etc.
+- Leave units: TUR='Gün' for days, TUR='Saat' for hours
+
+TURKISH STRING HANDLING:
+- Use UPPER() for case-insensitive Turkish text matching
+- Handle Turkish characters properly: İ, ı, Ç, ç, Ğ, ğ, Ş, ş, Ö, ö, Ü, ü
 
 Return ONLY this JSON format (no other text, no markdown, no explanations):
 {{
-    "explanation": "Detailed HR analysis explaining what you will analyze, why it's important, and what insights you expect to find",
-    "sql_query": "SELECT statement with actual table and column names from schema above that answers the user's question",
+    "explanation": "Detailed HR analysis explaining: 1) Which specific business rules apply to this query, 2) How you will apply the exact formulas/constraints from the ruleset, 3) What you will analyze and why it's important for HR decision-making, 4) What insights you expect to find based on the business rules",
+    "sql_query": "SELECT statement with actual table and column names from available HR tables that follows the business rules exactly",
     "chart_config": {{
         "chart_type": "bar|line|pie|table",
         "title": "Descriptive chart title",
-        "x_column": "actual column name from schema",
-        "y_column": "actual column name from schema"
+        "x_column": "actual column name from available tables",
+        "y_column": "actual column name from available tables"
     }}
 }}
 
-CRITICAL: Return ONLY the JSON above, no other text. Think like an HR expert and use the data catalogs to understand the business context.
+CRITICAL: Return ONLY the JSON above, no other text. Think like an HR expert and use the available HR tables appropriately.
 
 IMPORTANT: You must return valid JSON. Do not add any explanations before or after the JSON. The response must start with {{ and end with }}."""
     )
@@ -365,33 +603,30 @@ IMPORTANT: You must return valid JSON. Do not add any explanations before or aft
 def generate_unified_ai_response(natural_query: str) -> Tuple[str, str, Dict[str, Any], Dict[str, Any]]:
     """Generate unified AI response with SQL, analysis, and chart recommendations"""
     
-    # Get cached database context
-    schema = get_cached_schema()
-    sample_data = get_cached_sample_data()
+    # Get fresh database context - NO CACHE to ensure business rules are current
+    schema = get_fresh_schema()
+    sample_data = get_fresh_sample_data()
     
-    # Get table information (this is lightweight, no need to cache)
+    # Get table information (this is lightweight, no need to cache) - ONLY BI_CALISAN_BILGILERI
     from config.oracle_config import get_connection_pool
     pool = get_connection_pool()
     
     with pool.get_connection() as conn:
         cursor = conn.cursor()
-        cursor.execute("SELECT table_name FROM user_tables")
-        tables = [row[0] for row in cursor.fetchall()]
         
-        # Get table information
-        table_info = "\nEXACT TABLE STRUCTURE:\n"
-        for table in tables:
-            cursor.execute(f"SELECT column_name FROM user_tab_columns WHERE table_name = '{table}' ORDER BY column_id")
-            columns = [row[0] for row in cursor.fetchall()]
-            table_info += f"{table} table has ONLY these columns: {', '.join(columns)}\n"
+        # Only get BI_CALISAN_BILGILERI table information
+        table_name = "BI_CALISAN_BILGILERI"
+        cursor.execute(f"SELECT column_name FROM user_tab_columns WHERE table_name = '{table_name}' ORDER BY column_id")
+        columns = [row[0] for row in cursor.fetchall()]
+        table_info = f"\nEXACT TABLE STRUCTURE (ONLY {table_name}):\n"
+        table_info += f"{table_name} table has ONLY these columns: {', '.join(columns)}\n"
     
-    # Get catalog context for better AI understanding
-    catalog_context = get_catalog_context()
-    catalog_summary = get_catalog_summary()
-    
+    # Get ruleset context instead of catalog context
+    ruleset_context = get_ruleset_context()
     logger.info(f"Processing query: {natural_query}")
-    logger.info(f"Available tables: {tables}")
-    logger.info(f"Catalog context length: {len(catalog_context)}")
+    logger.info(f"Using tables: BI_CALISAN_BILGILERI and BI_AYLIK_IZIN_KULLANIM")
+    logger.info(f"Ruleset context length: {len(ruleset_context)}")
+    logger.info("✅ FRESH DATA: All business rules loaded from JSON files (NO CACHE)")
     
     # Create and run unified pipeline
     pipeline = create_unified_langchain_pipeline()
@@ -402,8 +637,7 @@ def generate_unified_ai_response(natural_query: str) -> Tuple[str, str, Dict[str
             "db_schema": schema,
             "table_info": table_info,
             "sample_data": sample_data,
-            "catalog_context": catalog_context,
-            "catalog_summary": catalog_summary
+            "ruleset_context": ruleset_context,
         })
         
         logger.info(f"AI pipeline response type: {type(response)}")
@@ -478,37 +712,33 @@ def generate_unified_ai_response(natural_query: str) -> Tuple[str, str, Dict[str
 
 
 def generate_sql_with_langchain(natural_query: str) -> Tuple[str, str, str]:
-    """Generate SQL query using LangChain pipeline with catalog context"""
+    """Generate SQL query using LangChain pipeline with ruleset context - ONLY BI_CALISAN_BILGILERI"""
     
     # Get database context
     schema = get_db_schema()
     
-    # Get catalog context for better AI understanding
-    catalog_context = get_catalog_context()
-    catalog_summary = get_catalog_summary()
+    # Get ruleset context only (no summary)
+    ruleset_context = get_ruleset_context()
     
     with get_db_connection() as conn:
         cursor = conn.cursor()
-        cursor.execute("SELECT table_name FROM user_tables")
-        tables = [row[0] for row in cursor.fetchall()]
         
-        # Get table information
-        table_info = "\nEXACT TABLE STRUCTURE:\n"
-        for table in tables:
-            cursor.execute(f"SELECT column_name FROM user_tab_columns WHERE table_name = '{table}' ORDER BY column_id")
-            columns = [row[0] for row in cursor.fetchall()]
-            table_info += f"{table} table has ONLY these columns: {', '.join(columns)}\n"
+        # Only get BI_CALISAN_BILGILERI table information
+        table_name = "BI_CALISAN_BILGILERI"
+        cursor.execute(f"SELECT column_name FROM user_tab_columns WHERE table_name = '{table_name}' ORDER BY column_id")
+        columns = [row[0] for row in cursor.fetchall()]
+        table_info = f"\nEXACT TABLE STRUCTURE (ONLY {table_name}):\n"
+        table_info += f"{table_name} table has ONLY these columns: {', '.join(columns)}\n"
         
-        # Get sample data
-        sample_data = "\nSample Data Examples:\n"
-        for table in tables:
-            cursor.execute(f"SELECT * FROM \"{table}\" WHERE ROWNUM <= 3")
-            rows = cursor.fetchall()
-            if rows:
-                sample_data += f"\n{table} sample rows:\n"
-                columns = [description[0] for description in cursor.description]
-                for row in rows:
-                    sample_data += f"- {', '.join([f'{columns[i]}: {value}' for i, value in enumerate(row)])}\n"
+        # Get sample data from BI_CALISAN_BILGILERI only
+        sample_data = f"\nSample Data Examples (ONLY {table_name}):\n"
+        cursor.execute(f"SELECT * FROM \"{table_name}\" WHERE ROWNUM <= 3")
+        rows = cursor.fetchall()
+        if rows:
+            sample_data += f"\n{table_name} sample rows:\n"
+            columns = [description[0] for description in cursor.description]
+            for row in rows:
+                sample_data += f"- {', '.join([f'{columns[i]}: {value}' for i, value in enumerate(row)])}\n"
     
     # Create and run pipeline with enhanced context
     pipeline = create_langchain_pipeline()
@@ -518,7 +748,7 @@ def generate_sql_with_langchain(natural_query: str) -> Tuple[str, str, str]:
         "db_schema": schema,
         "table_info": table_info,
         "sample_data": sample_data,
-        "catalog_context": f"\nDATA CATALOG INFORMATION:\n{catalog_summary}\n\nDETAILED CATALOG:\n{catalog_context}"
+        "catalog_context": f"\nDETAILED RULESET:\n{ruleset_context}"
     })
     
     logger.info(f"AI pipeline response type: {type(response)}")
@@ -556,50 +786,96 @@ def create_langchain_pipeline():
         api_key=os.getenv("OPENAI_API_KEY")
     )
     
-    # Create the prompt template
+    # Create the prompt template - ONLY BI_CALISAN_BILGILERI table
     prompt = ChatPromptTemplate.from_template("""
-    You are Aimet, an expert HR Data Analyst with 15+ years of experience in HR analytics, employee retention, and workforce planning. You MUST think like a human HR expert and analyze the data catalogs to understand the business context.
+    You are Aimet, an expert HR Data Analyst with 15+ years of experience in HR analytics, employee retention, and workforce planning. You MUST think like a human HR expert and analyze the ruleset to understand the business context.
 
-    AVAILABLE TABLES AND COLUMNS:
+    AVAILABLE TABLE AND COLUMNS (ONLY BI_CALISAN_BILGILERI):
     {db_schema}
 
     {table_info}
 
     {sample_data}
 
-    DATA CATALOGS:
+    🚨 CRITICAL BUSINESS RULES - ANALYZE THOROUGHLY:
     {catalog_context}
 
     Natural Language Query: {natural_query}
 
-    CRITICAL RULES:
-    1. **THINK LIKE AN HR EXPERT**: Analyze the user's question from an HR professional perspective. What business insights are they really looking for?
-    2. **EXAMINE DATA CATALOGS CAREFULLY**: The data catalogs contain detailed explanations of what each table and column represents. Read them thoroughly to understand the business context.
-    3. **USE ONLY EXISTING TABLES**: Look at the database schema above - these are the ONLY tables you can use. Never create or reference tables that don't exist.
-    4. **GENERATE MEANINGFUL SQL**: Create SQL queries that actually answer the user's question with real business value.
-    5. **ALWAYS INCLUDE COLUMN NAMES**: Never use SELECT * - always specify the exact columns you need.
-    6. **USE DOUBLE QUOTES**: Wrap table and column names in double quotes: "TableName", "ColumnName"
-    7. **NO SEMICOLON**: Don't end SQL with semicolon
-    8. **NEVER RETURN SELECT 1 FROM DUAL**: This is meaningless and shows you didn't understand the question
+    🔥 ULTRA-CRITICAL INSTRUCTIONS FOR BUSINESS RULES ANALYSIS:
 
-    EXAMPLES OF HR EXPERT THINKING:
-    - For "employee turnover rate by department": Think about how HR measures turnover, what data indicates someone left, and how to calculate rates
-    - For "average desired salary by position": Think about recruitment data, salary expectations, and market analysis
-    - For "employee engagement by department": Think about survey data, satisfaction scores, and team performance
+    1. **DEEP BUSINESS RULES ANALYSIS** 🎯:
+       - READ EVERY SINGLE BUSINESS RULE in the ruleset context above
+       - UNDERSTAND the formulas, constraints, and logic for each rule
+       - APPLY the exact business logic specified in the ruleset
+       - PAY SPECIAL ATTENTION to turnover_analysis, string_normalization, and name_matching rules
+
+    2. **TURNOVER ANALYSIS RULES** 📊:
+       - Use EXACT formulas from turnover_analysis section
+       - ayrilanlar: COUNT(EMP_NO) WHERE WORK_E_DATE IS NOT NULL
+       - baslangic: COUNT(EMP_NO) WHERE WORK_S_DATE <= 'YYYY-01-01' AND WORK_E_DATE IS NULL
+       - bitis: COUNT(EMP_NO) WHERE WORK_S_DATE <= 'YYYY-12-31' AND WORK_E_DATE IS NULL
+       - ortalama: (baslangic + bitis) / 2.0
+       - turnover_pct: ayrilanlar / ortalama * 100
+
+    3. **STRING NORMALIZATION RULES** 🔤:
+       - Apply Turkish character normalization: i→İ, ı→I, ç→Ç, ğ→Ğ, ş→Ş, ö→Ö, ü→Ü
+       - Case-insensitive searches for ALL text fields
+       - Normalize both user input AND database values
+
+    4. **NAME MATCHING PRIORITY** 👤:
+       - Priority order: KIMLIK_NO > EMP_NO > (UPPER(TRIM(NAME)), UPPER(TRIM(SURNAME)))
+       - Use exact matching logic from name_matching rules
+
+    5. **TABLE CONSTRAINTS** 📋:
+       - ONLY USE: BI_CALISAN_BILGILERI table
+       - ACTIVE EMPLOYEE: WORK_E_DATE IS NULL (VARCHAR2 type, not DATE - NO >= comparisons)
+       - COLUMN MAPPINGS: SICIL_NUMARASI (not EMP_NO), AD_SOYAD (not FULL_NAME)
+       - WORK_E_DATE: VARCHAR2 format like '8/12/25' or NULL for active employees
+
+    6. **BUSINESS RULE ENFORCEMENT** ⚖️:
+       - If a rule has "enforced": true, it MUST be applied
+       - Follow all assumptions, formulas, and constraints exactly
+       - Use provided SQL snippets as templates when available
+
+    7. **GENERATE MEANINGFUL SQL**: Create SQL queries that actually answer the user's question with real business value.
+    8. **ALWAYS INCLUDE COLUMN NAMES**: Never use SELECT * - always specify the exact columns you need.
+    9. **USE DOUBLE QUOTES**: Wrap table and column names in double quotes: "BI_CALISAN_BILGILERI", "SICIL_NUMARASI"
+    10. **NO SEMICOLON**: Don't end SQL with semicolon
+    11. **NEVER RETURN SELECT 1 FROM DUAL**: This is meaningless and shows you didn't understand the question
+
+    EXAMPLES WITH BUSINESS RULES ANALYSIS:
+    - For "2024 turnover analizi": 
+      * Business Rules: Apply EXACT turnover formulas from turnover_analysis section
+      * ayrilanlar: COUNT(*) WHERE WORK_E_DATE IS NOT NULL
+      * baslangic: COUNT(*) WHERE WORK_S_DATE <= '2024-01-01' AND WORK_E_DATE IS NULL
+      * bitis: COUNT(*) WHERE WORK_S_DATE <= '2024-12-31' AND WORK_E_DATE IS NULL
+      * ortalama: (baslangic + bitis) / 2.0
+      * turnover_pct: ayrilanlar / ortalama * 100
+
+    - For "Celil'in bilgileri": 
+      * Business Rules: Apply string_normalization and name_matching rules
+      * Normalize Turkish characters: CELİL, celil, CeLiL all match
+      * Use name matching priority: KIMLIK_NO > EMP_NO > (NAME, SURNAME)
+      * Query: Apply UPPER() normalization for case-insensitive matching
+
+    - For "employee count by department": 
+      * Business Rules: Apply active employee filter from business rules
+      * Query: SELECT DEPARTMENT, COUNT(*) FROM BI_CALISAN_BILGILERI WHERE WORK_E_DATE IS NULL GROUP BY DEPARTMENT
 
     Return ONLY this JSON format:
     {{
-        "explanation": "Detailed HR analysis explaining what you will analyze, why it's important, and what insights you expect to find",
-        "sql_query": "SELECT statement with actual table and column names from schema above that answers the user's question",
+        "explanation": "Detailed HR analysis explaining: 1) Which specific business rules apply to this query, 2) How you will apply the exact formulas/constraints from the ruleset, 3) What you will analyze and why it's important for HR decision-making, 4) What insights you expect to find based on the business rules",
+        "sql_query": "SELECT statement with actual table and column names from BI_CALISAN_BILGILERI table that follows the business rules exactly",
         "chart_config": {{
             "chart_type": "bar|line|pie|table",
             "title": "Descriptive chart title",
-            "x_column": "actual column name from schema",
-            "y_column": "actual column name from schema"
+            "x_column": "actual column name from BI_CALISAN_BILGILERI",
+            "y_column": "actual column name from BI_CALISAN_BILGILERI"
         }}
     }}
 
-    CRITICAL: Return ONLY the JSON above, no other text. Think like an HR expert and use the data catalogs to understand the business context.
+    CRITICAL: Return ONLY the JSON above, no other text. Think like an HR expert and use ONLY the BI_CALISAN_BILGILERI table.
     """)
     
     # Create the chain
@@ -927,12 +1203,11 @@ def process_natural_query_langchain_streaming(natural_query: str) -> List[Dict]:
         # Create unified pipeline with streaming
         chain = create_unified_langchain_pipeline()
         
-        # Get database context
+        # Get database context - ONLY BI_CALISAN_BILGILERI
         db_schema = get_db_schema()
         table_info = get_table_info()
         sample_data = get_sample_data()
-        catalog_context = get_catalog_context()
-        catalog_summary = get_catalog_summary()
+        ruleset_context = get_ruleset_context()
         
         # Execute chain with streaming
         response_stream = chain.stream({
@@ -940,8 +1215,7 @@ def process_natural_query_langchain_streaming(natural_query: str) -> List[Dict]:
             "db_schema": db_schema,
             "table_info": table_info,
             "sample_data": sample_data,
-            "catalog_context": catalog_context,
-            "catalog_summary": catalog_summary
+            "ruleset_context": ruleset_context,
         })
         
         chunks = []
@@ -966,33 +1240,42 @@ def process_natural_query_langchain_streaming(natural_query: str) -> List[Dict]:
         query_lower = natural_query.lower()
         
         if "employee count" in query_lower and "department" in query_lower:
-            explanation = "Analyzing employee count by department for workforce planning insights"
-            sql_query = 'SELECT "DEPARTMENTTYPE", COUNT(*) as employee_count FROM "EMPLOYEE_DATA" GROUP BY "DEPARTMENTTYPE"'
-            chart_config = {"chart_type": "bar", "title": "Employee Count by Department", "x_column": "DEPARTMENTTYPE", "y_column": "employee_count"}
+            explanation = "Analyzing employee count by department - Applying business rules: active employee filter (WORK_E_DATE IS NULL) from business rules for workforce planning insights"
+            sql_query = 'SELECT "DEPARTMENT", COUNT(*) as employee_count FROM "BI_CALISAN_BILGILERI" WHERE "WORK_E_DATE" IS NULL GROUP BY "DEPARTMENT"'
+            chart_config = {"chart_type": "bar", "title": "Employee Count by Department", "x_column": "DEPARTMENT", "y_column": "employee_count"}
+        elif "leave" in query_lower or "izin" in query_lower:
+            if "annual" in query_lower or "yıllık" in query_lower:
+                explanation = "Analyzing annual leave usage by employee - Applying business rules: leave_types_split rule (Yıllık İzin separate from Mahsuben), leave_inclusion_policies (exclude_mutabakat=true, sum_days=true), active employee filter"
+                sql_query = 'SELECT e."AD_SOYAD", SUM(i."KULLANILAN") as total_leave FROM "BI_CALISAN_BILGILERI" e JOIN "BI_AYLIK_IZIN_KULLANIM" i ON e."SICIL_NUMARASI" = i."SICIL_NUMARASI" WHERE i."IZIN_TURU" = \'Yıllık İzin\' AND e."WORK_E_DATE" IS NULL GROUP BY e."AD_SOYAD" ORDER BY total_leave DESC'
+                chart_config = {"chart_type": "bar", "title": "Annual Leave Usage by Employee", "x_column": "AD_SOYAD", "y_column": "total_leave"}
+            else:
+                explanation = "Analyzing leave types breakdown"
+                sql_query = 'SELECT "IZIN_TURU", COUNT(*) as usage_count, SUM("KULLANILAN") as total_amount FROM "BI_AYLIK_IZIN_KULLANIM" GROUP BY "IZIN_TURU" ORDER BY total_amount DESC'
+                chart_config = {"chart_type": "pie", "title": "Leave Types Breakdown", "x_column": "IZIN_TURU", "y_column": "total_amount"}
         elif "turnover" in query_lower or "exit" in query_lower:
-            explanation = "Analyzing employee turnover rates for retention insights"
-            sql_query = 'SELECT "DEPARTMENTTYPE", COUNT(*) as total_employees, COUNT(CASE WHEN "EXITDATE" IS NOT NULL THEN 1 END) as exited_employees FROM "EMPLOYEE_DATA" GROUP BY "DEPARTMENTTYPE"'
-            chart_config = {"chart_type": "bar", "title": "Employee Turnover by Department", "x_column": "DEPARTMENTTYPE", "y_column": "exited_employees"}
-        elif "salary" in query_lower or "compensation" in query_lower:
-            explanation = "Analyzing salary and compensation data for market insights"
-            sql_query = 'SELECT "DEPARTMENTTYPE", AVG("CURRENT_EMPLOYEE_SALARY") as avg_salary FROM "EMPLOYEE_DATA" WHERE "CURRENT_EMPLOYEE_SALARY" IS NOT NULL GROUP BY "DEPARTMENTTYPE"'
-            chart_config = {"chart_type": "bar", "title": "Average Salary by Department", "x_column": "DEPARTMENTTYPE", "y_column": "avg_salary"}
-        elif "candidate" in query_lower or "recruitment" in query_lower or "education" in query_lower:
-            explanation = "Analyzing recruitment data and candidate information"
-            sql_query = 'SELECT "EDUCATION_LEVEL", COUNT(*) as candidate_count FROM "RECRUITMENT_DATA" GROUP BY "EDUCATION_LEVEL"'
-            chart_config = {"chart_type": "pie", "title": "Candidates by Education Level", "x_column": "EDUCATION_LEVEL", "y_column": "candidate_count"}
-        elif "performance" in query_lower or "rating" in query_lower:
-            explanation = "Analyzing employee performance and ratings"
-            sql_query = 'SELECT "DEPARTMENTTYPE", AVG("CURRENT_EMPLOYEE_RATING") as avg_rating FROM "EMPLOYEE_DATA" WHERE "CURRENT_EMPLOYEE_RATING" IS NOT NULL GROUP BY "DEPARTMENTTYPE"'
-            chart_config = {"chart_type": "bar", "title": "Average Performance Rating by Department", "x_column": "DEPARTMENTTYPE", "y_column": "avg_rating"}
-        elif "experience" in query_lower or "years" in query_lower:
-            explanation = "Analyzing employee experience levels"
-            sql_query = 'SELECT "DEPARTMENTTYPE", AVG("CURRENT_EMPLOYEE_EXPERIENCE_YEARS") as avg_experience FROM "EMPLOYEE_DATA" WHERE "CURRENT_EMPLOYEE_EXPERIENCE_YEARS" IS NOT NULL GROUP BY "DEPARTMENTTYPE"'
-            chart_config = {"chart_type": "bar", "title": "Average Experience by Department", "x_column": "DEPARTMENTTYPE", "y_column": "avg_experience"}
+            explanation = "Analyzing employee turnover rates - Applying business rules: EXACT turnover formulas from turnover_analysis section (ayrilanlar, baslangic, bitis, ortalama, turnover_pct) for retention insights"
+            sql_query = 'SELECT "DEPARTMENT", COUNT(*) as total_employees, COUNT(CASE WHEN "WORK_E_DATE" IS NOT NULL THEN 1 END) as exited_employees FROM "BI_CALISAN_BILGILERI" GROUP BY "DEPARTMENT"'
+            chart_config = {"chart_type": "bar", "title": "Employee Turnover by Department", "x_column": "DEPARTMENT", "y_column": "exited_employees"}
+        elif "education" in query_lower:
+            explanation = "Analyzing employee education levels"
+            sql_query = 'SELECT "EDUCATION", COUNT(*) as employee_count FROM "BI_CALISAN_BILGILERI" WHERE "WORK_E_DATE" IS NULL GROUP BY "EDUCATION"'
+            chart_config = {"chart_type": "pie", "title": "Employees by Education Level", "x_column": "EDUCATION", "y_column": "employee_count"}
+        elif "service" in query_lower or "years" in query_lower:
+            explanation = "Analyzing employee years of service"
+            sql_query = 'SELECT "DEPARTMENT", AVG("YEARS_OF_SERVICE") as avg_service_years FROM "BI_CALISAN_BILGILERI" WHERE "WORK_E_DATE" IS NULL AND "YEARS_OF_SERVICE" IS NOT NULL GROUP BY "DEPARTMENT"'
+            chart_config = {"chart_type": "bar", "title": "Average Years of Service by Department", "x_column": "DEPARTMENT", "y_column": "avg_service_years"}
+        elif "gender" in query_lower:
+            explanation = "Analyzing employee gender distribution"
+            sql_query = 'SELECT "GENDER", COUNT(*) as employee_count FROM "BI_CALISAN_BILGILERI" WHERE "WORK_E_DATE" IS NULL GROUP BY "GENDER"'
+            chart_config = {"chart_type": "pie", "title": "Employee Gender Distribution", "x_column": "GENDER", "y_column": "employee_count"}
+        elif "location" in query_lower:
+            explanation = "Analyzing employee location distribution"
+            sql_query = 'SELECT "LOCATION", COUNT(*) as employee_count FROM "BI_CALISAN_BILGILERI" WHERE "WORK_E_DATE" IS NULL GROUP BY "LOCATION"'
+            chart_config = {"chart_type": "bar", "title": "Employee Distribution by Location", "x_column": "LOCATION", "y_column": "employee_count"}
         else:
             explanation = "AI analysis completed successfully - analyzing general employee data"
-            sql_query = 'SELECT "DEPARTMENTTYPE", COUNT(*) as count FROM "EMPLOYEE_DATA" GROUP BY "DEPARTMENTTYPE"'
-            chart_config = {"chart_type": "bar", "title": "Employee Distribution by Department", "x_column": "DEPARTMENTTYPE", "y_column": "count"}
+            sql_query = 'SELECT "DEPARTMENT", COUNT(*) as count FROM "BI_CALISAN_BILGILERI" WHERE "WORK_E_DATE" IS NULL GROUP BY "DEPARTMENT"'
+            chart_config = {"chart_type": "bar", "title": "Employee Distribution by Department", "x_column": "DEPARTMENT", "y_column": "count"}
         
         # Send final result
         chunks.append({

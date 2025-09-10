@@ -1,0 +1,470 @@
+{
+  "schema_name": "HR_IZIN_RULESET",
+  "version": "3.2.1",
+  "updated_at": "2025-09-10T12:34:03",
+  "locale": "tr-TR",
+  "tables": [
+    {
+      "table": "BI_AYLIK_IZIN_KULLANIM",
+      "primary_key": null,
+      "foreign_keys": [
+        {
+          "column": "SICIL_NUMARASI",
+          "references": "BI_CALISAN_BILGILERI(SICIL_NUMARASI)",
+          "join_type": "inner",
+          "notes": "SICIL_NUMARASI=SICIL_NUMARASI bire bir eşleşme"
+        }
+      ],
+      "columns": [
+        
+        {
+          "name": "SICIL_NUMARASI",
+          "type": "number",
+          "nullable": false,
+          "examples": [
+            "2",
+            "3",
+            "4",
+            "5",
+            "6"
+          ],
+          "description": "Çalışan sicil/EMP_NO eşlemesi. BI_CALISAN_BILGILERI.EMP_NO ile bire bir."
+        },
+        {
+          "name": "NAME",
+          "type": "string",
+          "nullable": false,
+          "examples": [
+            "CELİL ",
+            "MUTLU SEDAT",
+            "ULAŞ",
+            "EBRU",
+            "ENES "
+          ],
+          "description": "Çalışan adı (isim). İsimden eşleşmede TRIM+UPPER ile normalize edilir."
+        },
+        {
+          "name": "SURNAME",
+          "type": "string",
+          "nullable": false,
+          "examples": [
+            "KARACA",
+            "YILMAZ",
+            "KULA",
+            "ÇUHACI",
+            "KARAOĞLU"
+          ],
+          "description": "Çalışan soyadı. İsimden eşleşmede TRIM+UPPER ile normalize edilir."
+        },
+        {
+          "name": "ADSOYAD",
+          "type": "string",
+          "nullable": false,
+          "examples": [
+            "CELİL  KARACA",
+            "MUTLU SEDAT YILMAZ",
+            "ULAŞ KULA",
+            "EBRU ÇUHACI",
+            "ENES  KARAOĞLU"
+          ],
+          "description": "Ad + Soyad görüntü alanı. Eşleşmede kullanılmaz."
+        },
+        {
+          "name": "IZIN_TURU",
+          "type": "string",
+          "nullable": false,
+          "examples": [
+            "Yıllık İzin",
+            "Saatlik Mazeret İzni",
+            "Doğum Günü İzni",
+            "Mutabakatlı İzin",
+            "Taşınma İzni"
+          ],
+          "description": "İzin türü (Yıllık İzin, Saatlik Mazeret İzni, Telafi Mazeret İzni, vb.)."
+        },
+        {
+          "name": "YILI",
+          "type": "date",
+          "nullable": false,
+          "examples": [
+            "2025",
+            "2024",
+            "2022",
+            "2023",
+            "2021"
+          ],
+          "description": "İzin kullanımının gerçekleştiği yıl."
+        },
+        {
+          "name": "AY",
+          "type": "number",
+          "nullable": false,
+          "examples": [
+            "8",
+            "7",
+            "6",
+            "5",
+            "4"
+          ],
+          "description": "İzin kullanımının gerçekleştiği ay (1-12)."
+        },
+        {
+          "name": "KULLANILAN",
+          "type": "number",
+          "nullable": false,
+          "examples": [
+            "1.0",
+            "2.0",
+            "1.5",
+            "15.0",
+            "3.0"
+          ],
+          "description": "Kullanılan miktar. TUR='Gün' ise gün, TUR='Saat' ise saat."
+        },
+        {
+          "name": "HAFTA_TATILI",
+          "type": "number",
+          "nullable": false,
+          "examples": [
+            "0.0",
+            "2.0",
+            "6.0",
+            "4.0",
+            "1.0"
+          ],
+          "description": "Hafta tatili bilgisi (varsa). KULLANILAN net ise ikincil önemdedir."
+        },
+        {
+          "name": "TUR",
+          "type": "string",
+          "nullable": false,
+          "examples": [
+            "Gün",
+            "Saat"
+          ],
+          "description": "İzin birimi ('Gün' veya 'Saat')."
+        },
+        {
+          "name": "SUREC_ADIMI",
+          "type": "string",
+          "nullable": false,
+          "examples": [
+            "Tamamlandı"
+          ],
+          "description": "Süreç adımı (örn. Tamamlandı)."
+        },
+        {
+          "name": "IZIN_BASLAMA",
+          "type": "datetime",
+          "nullable": false,
+          "examples": [
+            "18/08/2025",
+            "28/07/2025",
+            "10/07/2025",
+            "08/07/2025",
+            "20/06/2025"
+          ],
+          "description": "İzin başlangıç tarihi/saat bilgisi."
+        },
+        {
+          "name": "IZIN_BITIS",
+          "type": "datetime",
+          "nullable": false,
+          "examples": [
+            "19/08/2025",
+            "29/07/2025",
+            "11/07/2025",
+            "09/07/2025",
+            "24/06/2025"
+          ],
+          "description": "İzin bitiş tarihi/saat bilgisi."
+        },
+        {
+          "name": "CALISAN_DURUMU",
+          "type": "string",
+          "nullable": false,
+          "examples": [
+            "ÇALIŞAN",
+            "AYRILAN"
+          ],
+          "description": "Çalışan durumu (örn. ÇALIŞAN)."
+        }
+      ]
+    },
+    {
+      "table": "BI_CALISAN_BILGILERI",
+      "note": "Referans (lookup) tablo",
+      "primary_key": [
+        "EMP_NO"
+      ],
+      "columns": [
+        {
+          "name": "EMP_NO",
+          "type": "number",
+          "nullable": false,
+          "examples": [
+            "8",
+            "15",
+            "25",
+            "7",
+            "38"
+          ],
+          "description": "Çalışan benzersiz numarası. Diğer tablolarda foreign key."
+        },
+        {
+          "name": "FULL_NAME",
+          "type": "string",
+          "nullable": false,
+          "examples": [
+            "İSMAİL ONUR BUMİN",
+            "DİREN ARLI",
+            "İREM DOĞANAY",
+            "BİROL  UĞURCUKLU ",
+            "OZAN ÇÖKLÜ"
+          ],
+          "description": "Ad Soyad görüntü alanı. Eşleşmede kullanılmaz."
+        },
+        {
+          "name": "DEPARTMENT",
+          "type": "string",
+          "nullable": false,
+          "examples": [
+            "Genel Müdürlük",
+            "HR Ürün Müdürlüğü",
+            "ERP Üretim Danışmanlığı Departmanı",
+            "ERP Yazılım Destek Departmanı",
+            "Satış Pazarlama Müdürlüğü"
+          ],
+          "description": "Departman (organizasyon birimi)."
+        },
+        {
+          "name": "WORK_S_DATE",
+          "type": "datetime",
+          "nullable": false,
+          "examples": [
+            "2012-02-21 00:00:00.000",
+            "2020-01-20 00:00:00.000",
+            "2022-08-08 00:00:00.000",
+            "2015-01-02 00:00:00.000",
+            "2023-05-22 00:00:00.000"
+          ],
+          "description": "İşe başlama tarihi."
+        },
+        {
+          "name": "WORK_E_DATE",
+          "type": "datetime",
+          "nullable": true,
+          "examples": [
+            "2024-07-26 00:00:00.000",
+            "2025-08-07 00:00:00.000",
+            "2024-09-04 00:00:00.000",
+            "2024-12-06 00:00:00.000",
+            "2025-08-22 00:00:00.000"
+          ],
+          "description": "İşten ayrılış tarihi (varsa). Aktif çalışan filtresi için kullanılır."
+        }
+      ]
+    }
+  ],
+  "business_rules": {
+    "active_employee_filter": {
+      "description": "Varsayılan aktif çalışan filtresi",
+      "sql_condition": "(e.WORK_E_DATE IS NULL OR e.WORK_E_DATE >= CURRENT_DATE)",
+      "applies_to": [
+        "all_employee_counts",
+        "leave_reports"
+      ]
+    },
+    "leave_usage": {
+      "description": "İzin kullanım hesap mantığı",
+      "rules": [
+        "KULLANILAN NET değerdir (hafta sonu + resmî tatil düşülmüş kabul edilir).",
+        "TUR='Gün' kayıtlar gün cinsinden toplanır.",
+        "TUR='Saat' kayıtlar saat cinsinden toplanır, güne çevrilmez.",
+        "Sunumda gün ve saat ayrı verilir: 'X gün Y saat'.",
+        "Saat toplamı 24'ü geçebilir, normalize edilmez."
+      ],
+      "type_breakdown_required": true,
+      "exclude_types": [
+        "Mutabakatlı İzin",
+        "Mutabakat"
+      ],
+      "separate_unit_output": true
+    },
+    "leave_types_split": {
+      "description": "İzin türlerinin ayrık ele alınması (Yıllık İzin vs Yıllık İzne Mahsuben ayrı).",
+      "rules": [
+        "Yıllık İzin VE Yıllık İzne Mahsuben ayrı türlerdir.",
+        "Kullanıcı 'yıllık izin' derse SADECE IZIN_TURU='Yıllık İzin' alınır.",
+        "Kullanıcı 'mahsuben' derse SADECE IZIN_TURU='Yıllık İzne Mahsuben' alınır.",
+        "İkisini birlikte istenirse açıkça belirtilmelidir; aksi halde birleştirilmez."
+      ],
+      "sql_guidance": [
+        "Sadece Yıllık İzin: WHERE i.IZIN_TURU = 'Yıllık İzin'",
+        "Sadece Mahsuben: WHERE i.IZIN_TURU = 'Yıllık İzne Mahsuben'",
+        "Birlikte istenirse: WHERE i.IZIN_TURU IN ('Yıllık İzin','Yıllık İzne Mahsuben')"
+      ]
+    },
+    "name_matching": {
+      "priority": [
+        "KIMLIK_NO",
+        "EMP_NO",
+        "(UPPER(TRIM(NAME)), UPPER(TRIM(SURNAME)))"
+      ],
+      "full_name_note": "FULL_NAME normalize edilse de aramada tercih edilmez."
+    },
+    "string_normalization": {
+      "description": "Tüm karakter içeren alanlarda arama case-insensitive ve Türkçe UPPER/LOWER dönüşümleriyle yapılmalıdır.",
+      "rules": [
+        "FULL_NAME, NAME, SURNAME, DEPARTMENT, TITLE, POSITION, EDUCATION, IZIN_TURU vb. alanlarda aramalar case-insensitive yapılmalıdır.",
+        "Türkçe harfler doğru normalize edilmelidir: i→İ, ı→I, ç→Ç, ğ→Ğ, ş→Ş, ö→Ö, ü→Ü.",
+        "Hem kullanıcıdan gelen değer hem de tablo alanları normalize edilerek karşılaştırma yapılmalıdır.",
+        "Celil, CELİL, celil, CeLiL gibi farklı yazımlar aynı kabul edilmelidir."
+      ],
+      "applies_to": [
+        "BI_CALISAN_BILGILERI",
+        "BI_AYLIK_IZIN_KULLANIM"
+      ],
+      "level": "yüksek",
+      "enforced": true
+    },
+    "leave_inclusion_policies": {
+      "annual_leave_default": {
+        "exclude_mutabakat": true,
+        "units": {
+          "sum_days": true,
+          "sum_hours": false
+        }
+      },
+      "include_mutabakat_after_start_for_balance_only": {
+        "description": "Yalnızca hakediş & kalan izin hesaplarında, işe başlangıçtan sonra olan mutabakatlı izinleri kullanılan toplamına dahil et ve nedeni metinde belirt.",
+        "activation_condition": "intent == 'annual_leave_balance_calc'",
+        "scope": {
+          "employee_join_key": "SICIL_NUMARASI = SICIL_NUMARASI",
+          "date_anchor": "WORK_S_DATE",
+          "leave_date_source": "MAKE_DATE(YILI, AY, 1)",
+          "comparison": "LEAVE_DATE >= WORK_S_DATE"
+        },
+        "units": {
+          "include_days": true,
+          "include_hours": false
+        },
+        "output_note": {
+          "require_note": true,
+          "message_template": "Mutabakatlı izin(ler), işe başlangıç tarihi sonrasında olduğu için toplam kullanıma dahil edilmiştir."
+        }
+      }
+    },
+    "entitlement_policies": {
+      "annual_leave_entitlement": {
+        "version": "1.0.0",
+        "description": "Yıllık izin hakediş günlerini kıdem bantlarına göre hesaplar; her hizmet yılı ayrı ayrı toplanır.",
+        "effective_date": "2025-09-10",
+        "eligibility": {
+          "employer_continuity_required": true,
+          "first_entitlement_after_years": 1,
+          "include_probation": true
+        },
+        "bands": [
+          {
+            "range_years_inclusive": [
+              1,
+              5
+            ],
+            "days_per_year": 14,
+            "label": "1–5"
+          },
+          {
+            "range_years_inclusive": [
+              6,
+              15
+            ],
+            "days_per_year": 20,
+            "label": "6–15"
+          },
+          {
+            "range_years_inclusive": [
+              16,
+              200
+            ],
+            "days_per_year": 26,
+            "label": "15+"
+          }
+        ],
+        "age_exception": {
+          "min_age_days_per_year": 20,
+          "applies_if_under": 18,
+          "applies_if_over": 50,
+          "dob_field": "BIRTH_DATE",
+          "note": "18 yaş altı veya 50 yaş üstü için yıllık izin en az 20 gündür."
+        },
+        "calculation": {
+          "service_start_field": "WORK_S_DATE",
+          "as_of_date_source": "CURRENT_DATE",
+          "service_years_count_method": "completed_anniversaries",
+          "sum_each_year_separately": true,
+          "pro_rata_current_year": false,
+          "units": {
+            "days_only": true,
+            "hours_to_days": false
+          }
+        },
+        "usage_offset": {
+          "join_key": "SICIL_NUMARASI = SICIL_NUMARASI",
+          "leave_table": "BI_AYLIK_IZIN_KULLANIM",
+          "annual_leave_type_equals": "Yıllık İzin",
+          "exclude_mutabakat_by_default": true,
+          "include_mutabakat_after_start_if_intent": "annual_leave_balance_calc",
+          "mutabakat_leave_date_source": "MAKE_DATE(YILI, AY, 1)",
+          "mutabakat_include_condition": "LEAVE_DATE >= WORK_S_DATE",
+          "sum_unit": "Gün"
+        },
+        "output": {
+          "fields": [
+            "EMP_NO",
+            "FULL_NAME",
+            "DEPARTMENT",
+            "WORK_S_DATE",
+            "completed_service_years",
+            "entitlement_total_days",
+            "used_total_days",
+            "remaining_total_days"
+          ],
+          "notes": {
+            "include_mutabakat_reason_required_if_applied": true,
+            "mutabakat_reason_text": "Mutabakatlı izin(ler), işe başlangıç tarihi sonrasında olduğu için toplam kullanıma dahil edilmiştir."
+          }
+        },
+        "examples": [
+          {
+            "tenure_years": 5,
+            "entitlement_days": 70,
+            "explanation": "İlk 5 yıla kadar yılda 14 gün → 5×14."
+          },
+          {
+            "tenure_years": 6,
+            "entitlement_days": 90,
+            "explanation": "1–5: 5×14=70; 6. yıl: 20 → toplam 90."
+          }
+        ]
+      }
+    }
+  },
+  "sql_templates": {
+    "top_annual_leave_person_company": {
+      "dialect": "PostgreSQL",
+      "sql": "SELECT \n  e.SICIL_NUMARASI, e.AD_SOYAD,\n  SUM(CASE WHEN i.TUR='Gün'  THEN i.KULLANILAN ELSE 0 END) AS TOPLAM_GUN,\n  SUM(CASE WHEN i.TUR='Saat' THEN i.KULLANILAN ELSE 0 END) AS TOPLAM_SAAT\nFROM BI_AYLIK_IZIN_KULLANIM i\nJOIN BI_CALISAN_BILGILERI e ON i.SICIL_NUMARASI = e.SICIL_NUMARASI\nWHERE i.YILI = :yil\n  AND i.IZIN_TURU = 'Yıllık İzin'\n  AND e.WORK_E_DATE IS NULL\n  AND i.IZIN_TURU NOT IN ('Mutabakatlı İzin','Mutabakat')\nGROUP BY e.SICIL_NUMARASI, e.AD_SOYAD\nORDER BY (SUM(CASE WHEN i.TUR='Gün' THEN i.KULLANILAN ELSE 0 END) * 24\n        + SUM(CASE WHEN i.TUR='Saat' THEN i.KULLANILAN ELSE 0 END)) DESC\nLIMIT 1;"
+    },
+    "top_hourly_or_telafi_person_company": {
+      "dialect": "PostgreSQL",
+      "sql": "SELECT \n  e.SICIL_NUMARASI, e.AD_SOYAD,\n  SUM(i.KULLANILAN) AS TOPLAM_SAAT\nFROM BI_AYLIK_IZIN_KULLANIM i\nJOIN BI_CALISAN_BILGILERI e ON i.SICIL_NUMARASI = e.SICIL_NUMARASI\nWHERE i.YILI = :yil\n  AND (i.TUR = 'Saat' OR UPPER(i.IZIN_TURU) LIKE '%TELAFİ%')\n  AND e.WORK_E_DATE IS NULL\n  AND UPPER(i.IZIN_TURU) NOT LIKE '%MUTABAKAT%'\nGROUP BY e.SICIL_NUMARASI, e.AD_SOYAD\nORDER BY SUM(i.KULLANILAN) DESC\nLIMIT 1;"
+    },
+    "person_total_leave_by_types": {
+      "dialect": "PostgreSQL",
+      "sql": "-- NAME + SURNAME ile güvenilir eşleşme\nWITH emp AS (\n  SELECT * FROM BI_CALISAN_BILGILERI\n  WHERE UPPER(TRIM(NAME)) = :name_upper\n    AND UPPER(TRIM(SURNAME)) = :surname_upper\n)\nSELECT \n  i.IZIN_TURU,\n  SUM(CASE WHEN i.TUR='Gün'  THEN i.KULLANILAN ELSE 0 END) AS TOPLAM_GUN,\n  SUM(CASE WHEN i.TUR='Saat' THEN i.KULLANILAN ELSE 0 END) AS TOPLAM_SAAT\nFROM BI_AYLIK_IZIN_KULLANIM i\nJOIN emp e ON i.SICIL_NUMARASI = e.SICIL_NUMARASI\nWHERE i.YILI = :yil\n  AND e.WORK_E_DATE IS NULL\n  AND i.IZIN_TURU NOT IN ('Mutabakatlı İzin','Mutabakat')\nGROUP BY i.IZIN_TURU\nORDER BY i.IZIN_TURU;"
+    }
+  },
+  "deprecated_notes": [
+    "ÖNCEKİ kural: 'Yıllık İzne Mahsuben' yıllık izinle birleştirilebilirdi — ARTIK GEÇERSİZ."
+  ]
+}
