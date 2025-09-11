@@ -202,10 +202,10 @@ def get_ruleset_context() -> str:
         current_time = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
         
         context_parts = []
-        context_parts.append("HR VERİ KURALLARI VE ŞEMASI:")
-        context_parts.append("=" * 50)
+        context_parts.append("🚨 CRITICAL HR BUSINESS RULES - MUST BE FOLLOWED 🚨")
+        context_parts.append("=" * 60)
         context_parts.append(f"GÜNCEL TARİH: {current_time}")
-        context_parts.append("=" * 50)
+        context_parts.append("=" * 60)
         
         # Load both rulesets
         rulesets = []
@@ -259,8 +259,10 @@ def get_ruleset_context() -> str:
                     context_parts.append(f"  - {col_name} ({col_type}) {nullable}: {description}")
         
         # Business rules from both rulesets - COMPLETE ALL RULES
-        context_parts.append("\n\nİŞ KURALLARI (TÜM DETAYLAR):")
-        context_parts.append("=" * 50)
+        context_parts.append("\n\n🔥 MANDATORY BUSINESS RULES - ENFORCED BY SYSTEM 🔥")
+        context_parts.append("=" * 60)
+        context_parts.append("⚠️  THESE RULES ARE NON-NEGOTIABLE - MUST BE APPLIED ⚠️")
+        context_parts.append("=" * 60)
         
         for ruleset_name, ruleset in rulesets:
             business_rules = ruleset.get("business_rules", {})
@@ -396,6 +398,229 @@ def get_ruleset_context() -> str:
         return f"Error reading ruleset: {str(e)}"
 
 
+def get_enhanced_ruleset_context() -> str:
+    """Get enhanced ruleset context with priority-based formatting and enforcement indicators"""
+    try:
+        import datetime
+        current_time = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+        
+        context_parts = []
+        context_parts.append("🚨 CRITICAL HR BUSINESS RULES - SYSTEM ENFORCED 🚨")
+        context_parts.append("=" * 70)
+        context_parts.append(f"GÜNCEL TARİH: {current_time}")
+        context_parts.append("=" * 70)
+        
+        # Load both rulesets
+        rulesets = []
+        
+        # Çalışan ruleset
+        calisan_path = Path("ruleset/calisan_ruleset_v1.2.1.json")
+        if calisan_path.exists():
+            with open(calisan_path, 'r', encoding='utf-8') as f:
+                calisan_ruleset = json.load(f)
+                rulesets.append(("ÇALIŞAN", calisan_ruleset))
+        
+        # İzin ruleset
+        izin_path = Path("ruleset/izin_ruleset_v3.2.1.json")
+        if izin_path.exists():
+            with open(izin_path, 'r', encoding='utf-8') as f:
+                izin_ruleset = json.load(f)
+                rulesets.append(("İZİN", izin_ruleset))
+        
+        # Process each ruleset with priority-based formatting
+        for ruleset_name, ruleset in rulesets:
+            context_parts.append(f"\n📋 {ruleset_name} RULESET:")
+            context_parts.append("-" * 40)
+            
+            # Table information
+            for table in ruleset.get("tables", []):
+                table_name = table.get("table", "")
+                context_parts.append(f"\n🗂️  Tablo: {table_name}")
+                
+                # Primary key
+                pk = table.get("primary_key", "")
+                if pk:
+                    if isinstance(pk, list):
+                        context_parts.append(f"🔑 Anahtar: {', '.join(pk)}")
+                    else:
+                        context_parts.append(f"🔑 Anahtar: {pk}")
+                
+                # Foreign keys
+                fks = table.get("foreign_keys", [])
+                if fks:
+                    context_parts.append("🔗 Foreign Keys:")
+                    for fk in fks:
+                        context_parts.append(f"  - {fk.get('column', '')} -> {fk.get('references', '')}")
+                
+                context_parts.append("📊 Kolonlar:")
+                
+                for column in table.get("columns", []):
+                    col_name = column.get("name", "")
+                    col_type = column.get("type", "")
+                    nullable = "NULL" if column.get("nullable", True) else "NOT NULL"
+                    description = column.get("description", "")
+                    context_parts.append(f"  - {col_name} ({col_type}) {nullable}: {description}")
+        
+        # Enhanced business rules with priority indicators
+        context_parts.append("\n\n🔥 MANDATORY BUSINESS RULES - ENFORCED BY SYSTEM 🔥")
+        context_parts.append("=" * 70)
+        context_parts.append("⚠️  THESE RULES ARE NON-NEGOTIABLE - MUST BE APPLIED ⚠️")
+        context_parts.append("=" * 70)
+        
+        for ruleset_name, ruleset in rulesets:
+            business_rules = ruleset.get("business_rules", {})
+            
+            if business_rules:
+                context_parts.append(f"\n🎯 {ruleset_name} İş Kuralları:")
+                context_parts.append("-" * 50)
+                
+                # Process ALL business rules with priority indicators
+                for rule_name, rule_data in business_rules.items():
+                    # Determine priority level
+                    priority = "🔴 CRITICAL" if rule_data.get("enforced", False) else "🟡 IMPORTANT"
+                    if rule_data.get("level") == "yüksek":
+                        priority = "🔴 CRITICAL"
+                    
+                    context_parts.append(f"\n{priority} {rule_name.upper()}:")
+                    
+                    # Add description with emphasis
+                    if isinstance(rule_data, dict) and "description" in rule_data:
+                        context_parts.append(f"  📝 Açıklama: {rule_data['description']}")
+                    
+                    # Add rules array with bullet points
+                    if isinstance(rule_data, dict) and "rules" in rule_data:
+                        context_parts.append("  📋 Kurallar:")
+                        for rule_text in rule_data["rules"]:
+                            context_parts.append(f"    ✅ {rule_text}")
+                    
+                    # Add formulas with special formatting
+                    if isinstance(rule_data, dict) and "formulas" in rule_data:
+                        context_parts.append("  🧮 Formüller:")
+                        for formula_name, formula_value in rule_data["formulas"].items():
+                            context_parts.append(f"    🔢 {formula_name}: {formula_value}")
+                    
+                    # Add assumptions
+                    if isinstance(rule_data, dict) and "assumptions" in rule_data:
+                        context_parts.append("  💭 Varsayımlar:")
+                        for assumption in rule_data["assumptions"]:
+                            context_parts.append(f"    📌 {assumption}")
+                    
+                    # Add SQL snippets with special formatting
+                    if isinstance(rule_data, dict) and "sql_snippets" in rule_data:
+                        context_parts.append("  💻 SQL Örnekleri:")
+                        for snippet_name, snippet_value in rule_data["sql_snippets"].items():
+                            context_parts.append(f"    🔧 {snippet_name}: {snippet_value}")
+                    
+                    # Add enforcement status
+                    if isinstance(rule_data, dict) and "enforced" in rule_data:
+                        enforcement_status = "🔒 ZORUNLU" if rule_data['enforced'] else "🔓 ÖNERİLEN"
+                        context_parts.append(f"  {enforcement_status}: {rule_data['enforced']}")
+                    
+                    # Add level
+                    if isinstance(rule_data, dict) and "level" in rule_data:
+                        level_emoji = "🔴" if rule_data['level'] == "yüksek" else "🟡"
+                        context_parts.append(f"  {level_emoji} Seviye: {rule_data['level']}")
+                    
+                    # Add applies_to
+                    if isinstance(rule_data, dict) and "applies_to" in rule_data:
+                        context_parts.append(f"  🎯 Uygulanan Tablolar: {', '.join(rule_data['applies_to'])}")
+                    
+                    # Add depends_on
+                    if isinstance(rule_data, dict) and "depends_on" in rule_data:
+                        context_parts.append(f"  🔗 Bağımlılıklar: {', '.join(rule_data['depends_on'])}")
+                    
+                    # Add any other fields we might have missed
+                    if isinstance(rule_data, dict):
+                        for key, value in rule_data.items():
+                            if key not in ["description", "rules", "formulas", "assumptions", "sql_snippets", 
+                                         "enforced", "level", "applies_to", "depends_on", "normalization", 
+                                         "priority", "exclude_types", "units", "sql_guidance", "notes", 
+                                         "department_scope", "full_name_note", "separate_unit_output", 
+                                         "exclude_mutabakat", "sum_days", "sum_hours", "version", "fields"]:
+                                context_parts.append(f"  📄 {key}: {value}")
+        
+        # Add enforcement summary
+        context_parts.append("\n\n🚨 RULESET ENFORCEMENT SUMMARY 🚨")
+        context_parts.append("=" * 50)
+        context_parts.append("🔴 CRITICAL rules MUST be applied - no exceptions")
+        context_parts.append("🟡 IMPORTANT rules should be applied when relevant")
+        context_parts.append("🔒 ENFORCED rules are system-mandated")
+        context_parts.append("=" * 50)
+        
+        return "\n".join(context_parts)
+        
+    except Exception as e:
+        logger.error(f"Error reading enhanced ruleset: {e}")
+        return f"Error reading enhanced ruleset: {str(e)}"
+
+
+def validate_sql_against_ruleset(sql_query: str, natural_query: str) -> Tuple[bool, List[str]]:
+    """Validate generated SQL against ruleset business rules"""
+    violations = []
+    
+    try:
+        # Load rulesets for validation
+        rulesets = []
+        
+        # Çalışan ruleset
+        calisan_path = Path("ruleset/calisan_ruleset_v1.2.1.json")
+        if calisan_path.exists():
+            with open(calisan_path, 'r', encoding='utf-8') as f:
+                calisan_ruleset = json.load(f)
+                rulesets.append(("ÇALIŞAN", calisan_ruleset))
+        
+        # İzin ruleset
+        izin_path = Path("ruleset/izin_ruleset_v3.2.1.json")
+        if izin_path.exists():
+            with open(izin_path, 'r', encoding='utf-8') as f:
+                izin_ruleset = json.load(f)
+                rulesets.append(("İZİN", izin_ruleset))
+        
+        sql_upper = sql_query.upper()
+        
+        # Check for enforced rules violations
+        for ruleset_name, ruleset in rulesets:
+            business_rules = ruleset.get("business_rules", {})
+            
+            for rule_name, rule_data in business_rules.items():
+                if rule_data.get("enforced", False):
+                    # Check active employee filter
+                    if rule_name == "active_employee_definition":
+                        if "COUNT" in sql_upper and "WORK_E_DATE" not in sql_upper:
+                            violations.append(f"CRITICAL: Active employee filter missing for count query")
+                    
+                    # Check string normalization
+                    elif rule_name == "string_normalization":
+                        if any(field in sql_upper for field in ["FULL_NAME", "DEPARTMENT", "TITLE"]) and "UPPER" not in sql_upper:
+                            violations.append(f"CRITICAL: String normalization (UPPER) missing for text fields")
+                    
+                    # Check turnover analysis formulas
+                    elif rule_name == "turnover_analysis":
+                        if "turnover" in natural_query.lower() and "WORK_E_DATE" not in sql_upper:
+                            violations.append(f"CRITICAL: Turnover analysis missing WORK_E_DATE logic")
+                    
+                    # Check leave inclusion policies
+                    elif rule_name == "leave_inclusion_policies":
+                        if "izin" in natural_query.lower() and "MUTABAKAT" not in sql_upper:
+                            violations.append(f"CRITICAL: Leave query missing mutabakat exclusion")
+        
+        # Check for table name violations
+        if "BI_CALISAN_BILGILERI" not in sql_upper and "BI_AYLIK_IZIN_KULLANIM" not in sql_upper:
+            violations.append("CRITICAL: Query must use HR tables (BI_CALISAN_BILGILERI or BI_AYLIK_IZIN_KULLANIM)")
+        
+        # Check for dangerous operations
+        dangerous_ops = ["DROP", "DELETE", "TRUNCATE", "UPDATE", "INSERT", "ALTER", "CREATE"]
+        for op in dangerous_ops:
+            if op in sql_upper:
+                violations.append(f"CRITICAL: Dangerous operation {op} detected")
+        
+        return len(violations) == 0, violations
+        
+    except Exception as e:
+        logger.error(f"Error validating SQL against ruleset: {e}")
+        return False, [f"Validation error: {str(e)}"]
+
+
 def get_db_schema() -> str:
     """Retrieves fresh database schema with table and column descriptions - NO CACHE"""
     return get_fresh_schema()
@@ -488,7 +713,7 @@ AVAILABLE TABLES AND COLUMNS:
 
 {sample_data}
 
-🚨 CRITICAL BUSINESS RULES - ANALYZE THOROUGHLY:
+🚨 CRITICAL BUSINESS RULES - SYSTEM ENFORCED - ANALYZE THOROUGHLY:
 {ruleset_context}
 
 USER QUERY: {natural_query}
@@ -499,6 +724,7 @@ USER QUERY: {natural_query}
    - READ EVERY SINGLE BUSINESS RULE in the ruleset context above
    - UNDERSTAND the formulas, constraints, and logic for each rule
    - APPLY the exact business logic specified in the ruleset
+   - PAY SPECIAL ATTENTION to 🔴 CRITICAL and 🔒 ZORUNLU rules - these are NON-NEGOTIABLE
    - PAY SPECIAL ATTENTION to turnover_analysis, leave_inclusion_policies, string_normalization, and name_matching rules
 
 2. **TURNOVER ANALYSIS RULES** 📊:
@@ -532,9 +758,12 @@ USER QUERY: {natural_query}
    - WORK_E_DATE: VARCHAR2 format like '8/12/25' or NULL for active employees
 
 7. **BUSINESS RULE ENFORCEMENT** ⚖️:
-   - If a rule has "enforced": true, it MUST be applied
+   - If a rule has "enforced": true, it MUST be applied - NO EXCEPTIONS
+   - 🔴 CRITICAL rules are system-mandated and cannot be ignored
+   - 🔒 ZORUNLU rules must be enforced in every query
    - Follow all assumptions, formulas, and constraints exactly
    - Use provided SQL snippets as templates when available
+   - Your SQL will be validated against these rules - violations will be flagged
 
 8. **GENERATE MEANINGFUL SQL**: Create SQL queries that actually answer the user's question with real business value.
 9. **ALWAYS INCLUDE COLUMN NAMES**: Never use SELECT * - always specify the exact columns you need.
@@ -601,7 +830,26 @@ IMPORTANT: You must return valid JSON. Do not add any explanations before or aft
 
 
 def generate_unified_ai_response(natural_query: str) -> Tuple[str, str, Dict[str, Any], Dict[str, Any]]:
-    """Generate unified AI response with SQL, analysis, and chart recommendations"""
+    """Generate unified AI response with SQL, analysis, and chart recommendations using CrewAI"""
+    
+    logger.info(f"Processing query with CrewAI: {natural_query}")
+    
+    try:
+        # Try CrewAI first
+        from crew_ai_utils import process_query_with_crew_ai
+        explanation, sql_query, chart_config, data_availability = process_query_with_crew_ai(natural_query)
+        
+        logger.info("✅ CrewAI processing completed successfully")
+        return explanation, sql_query, chart_config, data_availability
+        
+    except Exception as e:
+        logger.warning(f"CrewAI processing failed, falling back to LangChain: {e}")
+        
+        # Fallback to original LangChain method
+        return _generate_unified_ai_response_fallback(natural_query)
+
+def _generate_unified_ai_response_fallback(natural_query: str) -> Tuple[str, str, Dict[str, Any], Dict[str, Any]]:
+    """Fallback method using original LangChain pipeline"""
     
     # Get fresh database context - NO CACHE to ensure business rules are current
     schema = get_fresh_schema()
@@ -621,12 +869,12 @@ def generate_unified_ai_response(natural_query: str) -> Tuple[str, str, Dict[str
         table_info = f"\nEXACT TABLE STRUCTURE (ONLY {table_name}):\n"
         table_info += f"{table_name} table has ONLY these columns: {', '.join(columns)}\n"
     
-    # Get ruleset context instead of catalog context
-    ruleset_context = get_ruleset_context()
-    logger.info(f"Processing query: {natural_query}")
+    # Get enhanced ruleset context with priority indicators
+    ruleset_context = get_enhanced_ruleset_context()
+    logger.info(f"Processing query with LangChain fallback: {natural_query}")
     logger.info(f"Using tables: BI_CALISAN_BILGILERI and BI_AYLIK_IZIN_KULLANIM")
-    logger.info(f"Ruleset context length: {len(ruleset_context)}")
-    logger.info("✅ FRESH DATA: All business rules loaded from JSON files (NO CACHE)")
+    logger.info(f"Enhanced ruleset context length: {len(ruleset_context)}")
+    logger.info("✅ ENHANCED RULESET: Priority-based business rules loaded with enforcement indicators")
     
     # Create and run unified pipeline
     pipeline = create_unified_langchain_pipeline()
@@ -676,6 +924,14 @@ def generate_unified_ai_response(natural_query: str) -> Tuple[str, str, Dict[str
                 logger.error(f"Invalid SQL query generated: {sql_query}")
                 raise ValueError("AI generated invalid SQL query")
             
+            # Validate SQL against ruleset business rules
+            is_valid, violations = validate_sql_against_ruleset(sql_query, natural_query)
+            if not is_valid:
+                logger.warning(f"SQL validation failed: {violations}")
+                # For now, log violations but don't block execution
+                # In production, you might want to regenerate or reject
+                explanation += f"\n\n⚠️ RULESET VALIDATION WARNINGS:\n" + "\n".join(violations)
+            
             logger.info(f"Extracted explanation: {explanation}")
             logger.info(f"Extracted sql_query: {sql_query}")
             logger.info(f"Extracted chart_config: {chart_config}")
@@ -717,8 +973,8 @@ def generate_sql_with_langchain(natural_query: str) -> Tuple[str, str, str]:
     # Get database context
     schema = get_db_schema()
     
-    # Get ruleset context only (no summary)
-    ruleset_context = get_ruleset_context()
+    # Get enhanced ruleset context only (no summary)
+    ruleset_context = get_enhanced_ruleset_context()
     
     with get_db_connection() as conn:
         cursor = conn.cursor()
@@ -830,7 +1086,7 @@ def create_langchain_pipeline():
     5. **TABLE CONSTRAINTS** 📋:
        - ONLY USE: BI_CALISAN_BILGILERI table
        - ACTIVE EMPLOYEE: WORK_E_DATE IS NULL (VARCHAR2 type, not DATE - NO >= comparisons)
-       - COLUMN MAPPINGS: SICIL_NUMARASI (not EMP_NO), AD_SOYAD (not FULL_NAME)
+       - COLUMN MAPPINGS: jIL_NUMARASI (not EMP_NO), AD_SOYAD (not FULL_NAME)
        - WORK_E_DATE: VARCHAR2 format like '8/12/25' or NULL for active employees
 
     6. **BUSINESS RULE ENFORCEMENT** ⚖️:
@@ -1207,7 +1463,7 @@ def process_natural_query_langchain_streaming(natural_query: str) -> List[Dict]:
         db_schema = get_db_schema()
         table_info = get_table_info()
         sample_data = get_sample_data()
-        ruleset_context = get_ruleset_context()
+        ruleset_context = get_enhanced_ruleset_context()
         
         # Execute chain with streaming
         response_stream = chain.stream({

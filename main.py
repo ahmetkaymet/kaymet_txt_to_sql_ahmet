@@ -24,6 +24,7 @@ from langchain_utils import (
     generate_chart,
     detect_hr_chart_type
 )
+from crew_ai_utils import process_query_with_crew_ai
 
 # from user_roles import validate_user_query, get_user_permissions, user_manager
 from query_history import save_query_history
@@ -129,6 +130,7 @@ async def root():
             {"path": "/sessions", "method": "GET", "description": "Get all HR query sessions"},
             {"path": "/generate-sql", "method": "POST", "description": "Generate SQL for HR data analysis using LangChain"},
             {"path": "/execute-sql", "method": "POST", "description": "Execute HR analytics query with LangChain"},
+            {"path": "/crew-ai-execute", "method": "POST", "description": "Execute HR analytics query using CrewAI multi-agent system"},
             {"path": "/check-and-execute", "method": "POST", "description": "Check HR data availability and execute analytics query"},
             {"path": "/chart", "method": "POST", "description": "Generate HR-specific charts and visualizations"},
             {"path": "/user-permissions/{username}", "method": "GET", "description": "Get user permissions"},
@@ -482,6 +484,79 @@ async def process_request_queue():
             is_processing = False
     
     is_processing = False
+
+@app.post("/crew-ai-execute", response_model=ExecuteSQLResponse)
+async def crew_ai_execute(request: QueryRequest) -> ExecuteSQLResponse:
+    """Execute HR analytics query using CrewAI multi-agent system"""
+    logger.info(f"Executing CrewAI query: {request.query}")
+    
+    try:
+        # Use CrewAI for processing
+        explanation, sql_query, chart_config, data_availability = process_query_with_crew_ai(request.query)
+        
+        # Check data availability
+        is_available = data_availability.get("available", True)
+        if not is_available:
+            return ExecuteSQLResponse(
+                explanation=f"Data Availability Check: {data_availability.get('reason', 'No data available')}",
+                sql_query="SELECT 'No data available' AS message;",
+                results=[],
+                session_id=request.session_id or "crew-ai-session",
+                title="Data Not Available",
+                chart_data=None,
+                chart_config={"chart_type": "none", "reason": "No data available"}
+            )
+        
+        # Execute the SQL query
+        results = execute_sql_query(sql_query)
+        
+        # Generate chart if applicable
+        chart_data = None
+        if chart_config and chart_config.get("chart_type") and chart_config["chart_type"] != "none":
+            try:
+                chart_data = generate_chart(results, chart_config)
+            except Exception as e:
+                logger.warning(f"Chart generation failed: {e}")
+                chart_data = None
+        
+        # Generate title
+        title = f"CrewAI Query: {request.query[:50]}..." if len(request.query) > 50 else request.query
+        
+        # Save to history
+        session_id = request.session_id or "crew-ai-session"
+        save_query_history(
+            session_id=session_id,
+            natural_query=request.query,
+            sql_query=sql_query,
+            query_result=str(results),
+            explanation=explanation,
+            title=title,
+            chart_data=chart_data,
+            chart_config=str(chart_config),
+            username=request.username
+        )
+        
+        # Limit results for performance
+        if results and len(results) > 100:
+            results = results[:100]
+            explanation += "\n(Note: Results limited to first 100 rows for better performance)"
+        
+        response = ExecuteSQLResponse(
+            explanation=explanation,
+            sql_query=sql_query,
+            results=results,
+            session_id=session_id,
+            title=title,
+            chart_data=chart_data,
+            chart_config=chart_config
+        )
+        
+        logger.info(f"CrewAI query executed successfully, session_id: {session_id}")
+        return response
+        
+    except Exception as e:
+        logger.error(f"Error executing CrewAI query: {e}")
+        raise HTTPException(status_code=500, detail=f"Error executing CrewAI query: {str(e)}")
 
 @app.post("/check-and-execute", response_model=CheckAndExecuteResponse)
 async def check_and_execute(request: QueryRequest) -> CheckAndExecuteResponse:

@@ -6,16 +6,16 @@
   "tables": [
     {
       "table": "BI_CALISAN_BILGILERI",
-      "primary_key": "EMP_NO",
+      "primary_key": "SICIL_NUMARASI",
       "columns": [
         {
-          "name": "EMP_NO",
+          "name": "SICIL_NUMARASI",
           "type": "number",
           "nullable": false,
           "description": "Sicil numarası (eşsiz anahtar)"
         },
         {
-          "name": "FULL_NAME",
+          "name": "AD_SOYAD",
           "type": "string",
           "nullable": false,
           "description": "Ad Soyad (gösterim için)"
@@ -54,13 +54,13 @@
           "name": "WORKING_STATUS",
           "type": "string",
           "nullable": true,
-          "description": "Çalışma durumu (örn. Aktif, Pasif, Stajyer)"
+          "description": "Çalışma durumu (örn. Tam Zamanlı, Yarı Zamanlı)"
         },
         {
           "name": "EDUCATION",
           "type": "string",
           "nullable": true,
-          "description": "Öğrenim durumu"
+          "description": "Öğrenim durumu(Örn. Lise, Üniversite, Yüksek Lisans, Doktora)"
         },
         {
           "name": "GENDER",
@@ -72,13 +72,13 @@
           "name": "LOCATION",
           "type": "string",
           "nullable": true,
-          "description": "Lokasyon"
+          "description": "Şehir ismi. Ankara, İstanbul, İzmir gibi"
         },
         {
           "name": "YEARS_OF_SERVICE",
           "type": "number",
           "nullable": true,
-          "description": "Hizmet süresi (yıl)"
+          "description": "Hizmet süresi (yıl). Örn. 10.3, 5, 3.2, 1"
         }
       ]
     }
@@ -111,13 +111,12 @@
     "identity_matching": {
       "description": "Kişi eşleştirme önceliği ve güvenliği.",
       "priority": [
-        "KIMLIK_NO (varsa)",
         "EMP_NO",
         "NAME+SURNAME (izin tablosundan gerekiyorsa)"
       ],
       "notes": [
         "FULL_NAME gösterim içindir; aramalarda NAME+SURNAME tercih edilir (ilgili tabloda mevcutsa).",
-        "Aynı ad-soyada birden çok kayıt çıkarsa TCKN/EMP_NO istenir."
+        "Aynı ad-soyada birden çok kayıt çıkarsa EMP_NO istenir."
       ]
     },
     "date_handling": {
@@ -150,28 +149,17 @@
         }
       ]
     },
-    "intern_rules": {
-      "description": "Stajyer sayımları ve filtreleri.",
-      "rules": [
-        "Aktif stajyer sayısı: active_employee_definition filtresi + WORKING_STATUS='Stajyer'.",
-        "Toplam stajyer sayısı: WORKING_STATUS='Stajyer' (aktiflik şartı olmadan)."
-      ]
-    },
+    
     "safe_answering_policy": {
       "description": "Kişisel bilgi sorgularında %99 emin olmadan yanıt verme; önce veriyle doğrula.",
       "enforced": true,
       "examples": [
-        "Çoklu ad eşleşmesinde TCKN/EMP_NO iste.",
+        
         "Belirsiz tarih aralığında kullanıcıdan netleştime iste.",
         "Departman adı farklı varyasyonlarda gelirse normalize edip teyit et."
       ]
     },
-    "privacy": {
-      "description": "TCKN gibi hassas alanların sadece filtre amaçlı kullanımı; çıktıda maskeleme.",
-      "masking": {
-        "TCKN": "****{last4}"
-      }
-    },
+    
     "intent_detection": {
       "description": "Kullanıcı sorusundan niyeti (intent) çıkart ve %99 emin olmadan yanıt üretme.",
       "intents": [

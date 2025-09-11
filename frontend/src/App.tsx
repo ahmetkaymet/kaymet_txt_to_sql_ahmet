@@ -214,7 +214,7 @@ function App() {
     setLoading(false);
   };
 
-  const handleSubmit = async (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent, useCrewAI: boolean = false) => {
     e.preventDefault();
     
     if (!query.trim()) return;
@@ -226,7 +226,8 @@ function App() {
     }
     
     const startTime = Date.now();
-    console.log(`🚀 Starting query: "${query.trim()}" at ${new Date().toISOString()}`);
+    const endpoint = useCrewAI ? 'crew-ai-execute' : 'check-and-execute';
+    console.log(`🚀 Starting query: "${query.trim()}" with ${endpoint} at ${new Date().toISOString()}`);
     
     setIsStreaming(true);
     setLoading(true); // Add loading state
@@ -241,7 +242,7 @@ function App() {
       const apiStartTime = Date.now();
       console.log('📡 API call starting...');
       
-      const response = await axios.post(`${API_URL}/check-and-execute`, {
+      const response = await axios.post(`${API_URL}/${endpoint}`, {
         query: query.trim(),
         session_id: result?.session_id
       });
@@ -264,8 +265,8 @@ function App() {
         return;
       }
       
-      // Check-and-execute response içindeki data nesnesini (ExecuteSQLResponse) almalıyız
-      const resultData = response.data.data;
+      // CrewAI endpoint'i direkt ExecuteSQLResponse döndürür, check-and-execute ise data içinde
+      const resultData = useCrewAI ? response.data : response.data.data;
       console.log('Full response:', response.data);
       console.log('Result data:', resultData);
       console.log('Result data type:', typeof resultData);
@@ -1481,7 +1482,7 @@ function App() {
             <HStack 
               spacing={3} 
               as="form" 
-              onSubmit={handleSubmit}
+              onSubmit={(e) => handleSubmit(e, false)}
               bg="white"
               p={4}
               borderRadius="2xl"
@@ -1502,7 +1503,7 @@ function App() {
                   boxShadow: "0 0 0 3px rgba(0, 0, 0, 0.05)"
                 }}
                 _hover={{ borderColor: "gray.300" }}
-                onKeyPress={(e) => e.key === 'Enter' && handleSubmit(e)}
+                onKeyPress={(e) => e.key === 'Enter' && handleSubmit(e, false)}
                 bg="white"
                 flex={1}
                 fontSize="md"
@@ -1526,6 +1527,27 @@ function App() {
                 transition="all 0.2s"
               >
                 <Icon as={ArrowUpIcon} />
+              </Button>
+              <Button
+                onClick={(e) => handleSubmit(e, true)}
+                colorScheme="blue"
+                size="lg"
+                px={6}
+                py={5}
+                fontSize="md"
+                fontWeight="medium"
+                borderRadius="xl"
+                boxShadow="0 2px 8px rgba(0, 0, 0, 0.1)"
+                isLoading={loading}
+                loadingText="CrewAI..."
+                _hover={{
+                  transform: "translateY(-1px)",
+                  boxShadow: "0 4px 15px rgba(0, 0, 0, 0.15)"
+                }}
+                transition="all 0.2s"
+                title="Use CrewAI Multi-Agent System"
+              >
+                🤖
               </Button>
             </HStack>
           </Container>

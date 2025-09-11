@@ -28,36 +28,11 @@
             "5",
             "6"
           ],
-          "description": "Çalışan sicil/EMP_NO eşlemesi. BI_CALISAN_BILGILERI.EMP_NO ile bire bir."
+          "description": "sicil numarası"
         },
+        
         {
-          "name": "NAME",
-          "type": "string",
-          "nullable": false,
-          "examples": [
-            "CELİL ",
-            "MUTLU SEDAT",
-            "ULAŞ",
-            "EBRU",
-            "ENES "
-          ],
-          "description": "Çalışan adı (isim). İsimden eşleşmede TRIM+UPPER ile normalize edilir."
-        },
-        {
-          "name": "SURNAME",
-          "type": "string",
-          "nullable": false,
-          "examples": [
-            "KARACA",
-            "YILMAZ",
-            "KULA",
-            "ÇUHACI",
-            "KARAOĞLU"
-          ],
-          "description": "Çalışan soyadı. İsimden eşleşmede TRIM+UPPER ile normalize edilir."
-        },
-        {
-          "name": "ADSOYAD",
+          "name": "AD_SOYAD",
           "type": "string",
           "nullable": false,
           "examples": [
@@ -195,11 +170,11 @@
       "table": "BI_CALISAN_BILGILERI",
       "note": "Referans (lookup) tablo",
       "primary_key": [
-        "EMP_NO"
+        "SICIL_NUMARASI"
       ],
       "columns": [
         {
-          "name": "EMP_NO",
+          "name": "SICIL_NUMARASI",
           "type": "number",
           "nullable": false,
           "examples": [
@@ -212,7 +187,7 @@
           "description": "Çalışan benzersiz numarası. Diğer tablolarda foreign key."
         },
         {
-          "name": "FULL_NAME",
+          "name": "AD_SOYAD",
           "type": "string",
           "nullable": false,
           "examples": [
@@ -307,8 +282,8 @@
     },
     "name_matching": {
       "priority": [
-        "KIMLIK_NO",
-        "EMP_NO",
+        
+        "SICIL_NUMARASI",
         "(UPPER(TRIM(NAME)), UPPER(TRIM(SURNAME)))"
       ],
       "full_name_note": "FULL_NAME normalize edilse de aramada tercih edilmez."
@@ -421,7 +396,7 @@
         },
         "output": {
           "fields": [
-            "EMP_NO",
+            "SICIL_NUMARASI",
             "FULL_NAME",
             "DEPARTMENT",
             "WORK_S_DATE",
