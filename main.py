@@ -501,7 +501,7 @@ async def crew_ai_execute(request: QueryRequest) -> ExecuteSQLResponse:
                 explanation=f"Data Availability Check: {data_availability.get('reason', 'No data available')}",
                 sql_query="SELECT 'No data available' AS message;",
                 results=[],
-                session_id=request.session_id or "crew-ai-session",
+                session_id=request.session_id or f"crew-ai-{int(time.time())}",
                 title="Data Not Available",
                 chart_data=None,
                 chart_config={"chart_type": "none", "reason": "No data available"}
@@ -523,7 +523,7 @@ async def crew_ai_execute(request: QueryRequest) -> ExecuteSQLResponse:
         title = f"CrewAI Query: {request.query[:50]}..." if len(request.query) > 50 else request.query
         
         # Save to history
-        session_id = request.session_id or "crew-ai-session"
+        session_id = request.session_id or f"crew-ai-{int(time.time())}"
         save_query_history(
             session_id=session_id,
             natural_query=request.query,
