@@ -1,0 +1,76 @@
+services:
+  # Backend FastAPI Service
+  backend:
+    build:
+      context: .
+      dockerfile: Dockerfile.backend
+    container_name: aimet-backend
+    ports:
+      - "8000:8000"
+    environment:
+      - OPENAI_API_KEY=${OPENAI_API_KEY}
+      - ORACLE_USER=${ORACLE_USER}
+      - ORACLE_PASSWORD=${ORACLE_PASSWORD}
+      - ORACLE_DSN=${ORACLE_DSN}
+      - OPENAI_MODEL=${OPENAI_MODEL:-gpt-4o}
+      - LOG_LEVEL=${LOG_LEVEL:-INFO}
+    volumes:
+      - ./query_history.db:/app/query_history.db
+      - ./data.db:/app/data.db
+      - ./ruleset:/app/ruleset
+      - ./server.log:/app/server.log
+    networks:
+      - aimet-network
+    restart: unless-stopped
+    depends_on:
+      - frontend
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
+
+  # Frontend React Service
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+    container_name: aimet-frontend
+    ports:
+      - "3000:3000"
+    environment:
+      - VITE_API_URL=http://localhost:8000
+    networks:
+      - aimet-network
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:3000/"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
+
+  # Optional: Oracle Database (if you want to run Oracle in Docker)
+  # Uncomment the following if you want to run Oracle locally
+  # oracle-db:
+  #   image: container-registry.oracle.com/database/express:21.3.0-xe
+  #   container_name: aimet-oracle
+  #   ports:
+  #     - "1521:1521"
+  #   environment:
+  #     - ORACLE_PWD=oracle123
+  #     - ORACLE_CHARACTERSET=AL32UTF8
+  #   volumes:
+  #     - oracle-data:/opt/oracle/oradata
+  #   networks:
+  #     - aimet-network
+  #   restart: unless-stopped
+
+networks:
+  aimet-network:
+    driver: bridge
+
+# Uncomment if using Oracle in Docker
+# volumes:
+#   oracle-data:

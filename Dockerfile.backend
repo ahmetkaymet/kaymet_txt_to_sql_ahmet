@@ -1,0 +1,61 @@
+# Python 3.11 slim image
+FROM python:3.11-slim
+
+# Set working directory
+WORKDIR /app
+
+# Install system dependencies in one optimized layer
+RUN apt-get update && apt-get install -y \
+    curl \
+    gcc \
+    g++ \
+    libaio-dev \
+    wget \
+    unzip \
+    && rm -rf /var/lib/apt/lists/*
+
+# Install Oracle Instant Client only for x64 with optimizations
+RUN ARCH=$(uname -m) && \
+    if [ "$ARCH" = "x86_64" ]; then \
+        echo "Installing Oracle Instant Client for x64..." && \
+        mkdir -p /opt/oracle && \
+        cd /opt/oracle && \
+        wget -q https://download.oracle.com/otn_software/linux/instantclient/2112000/instantclient-basic-linux.x64-21.12.0.0.0dbru.zip && \
+        wget -q https://download.oracle.com/otn_software/linux/instantclient/2112000/instantclient-sdk-linux.x64-21.12.0.0.0dbru.zip && \
+        unzip -q instantclient-basic-linux.x64-21.12.0.0.0dbru.zip && \
+        unzip -q instantclient-sdk-linux.x64-21.12.0.0.0dbru.zip && \
+        rm -f *.zip; \
+    else \
+        echo "ARM64 architecture detected. Oracle Instant Client will use thin mode."; \
+    fi
+
+# Set Oracle environment variables
+ENV LD_LIBRARY_PATH=/opt/oracle/instantclient_21_12:$LD_LIBRARY_PATH
+ENV PATH=/opt/oracle/instantclient_21_12:$PATH
+
+# Copy requirements first for better caching
+COPY requirements.txt .
+
+# Install Python dependencies with optimizations
+RUN pip install --no-cache-dir --upgrade pip setuptools wheel && \
+    pip install --no-cache-dir --compile -r requirements.txt
+
+# Copy application code
+COPY . .
+
+# Create necessary directories and set permissions
+RUN mkdir -p /app/logs && \
+    groupadd -r appuser && useradd -r -g appuser appuser && \
+    chown -R appuser:appuser /app
+
+USER appuser
+
+# Expose port
+EXPOSE 8000
+
+# Health check
+HEALTHCHECK --interval=30s --timeout=10s --start-period=40s --retries=3 \
+    CMD curl -f http://localhost:8000/ || exit 1
+
+# Run the application
+CMD ["python", "main.py"]

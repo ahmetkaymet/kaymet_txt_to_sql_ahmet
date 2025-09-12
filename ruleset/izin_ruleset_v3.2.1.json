@@ -9,16 +9,28 @@
       "primary_key": null,
       "foreign_keys": [
         {
-          "column": "SICIL_NUMARASI",
-          "references": "BI_CALISAN_BILGILERI(SICIL_NUMARASI)",
+          "column": "SICIL",
+          "references": "BI_CALISAN_BILGILERI(EMP_NO)",
           "join_type": "inner",
-          "notes": "SICIL_NUMARASI=SICIL_NUMARASI bire bir eşleşme"
+          "notes": "SICIL=EMP_NO bire bir eşleşme"
         }
       ],
       "columns": [
-        
         {
-          "name": "SICIL_NUMARASI",
+          "name": "KIMLIK_NO",
+          "type": "number",
+          "nullable": false,
+          "examples": [
+            "12334200094",
+            "64858214828",
+            "26929602422",
+            "13930057648",
+            "27823448154"
+          ],
+          "description": "T.C. Kimlik Numarası (privacy hassas). Asıl eşleşme anahtarı olarak kullanılabilir."
+        },
+        {
+          "name": "SICIL",
           "type": "number",
           "nullable": false,
           "examples": [
@@ -28,11 +40,36 @@
             "5",
             "6"
           ],
-          "description": "sicil numarası"
+          "description": "Çalışan sicil/EMP_NO eşlemesi. BI_CALISAN_BILGILERI.EMP_NO ile bire bir."
         },
-        
         {
-          "name": "AD_SOYAD",
+          "name": "NAME",
+          "type": "string",
+          "nullable": false,
+          "examples": [
+            "CELİL ",
+            "MUTLU SEDAT",
+            "ULAŞ",
+            "EBRU",
+            "ENES "
+          ],
+          "description": "Çalışan adı (isim). İsimden eşleşmede TRIM+UPPER ile normalize edilir."
+        },
+        {
+          "name": "SURNAME",
+          "type": "string",
+          "nullable": false,
+          "examples": [
+            "KARACA",
+            "YILMAZ",
+            "KULA",
+            "ÇUHACI",
+            "KARAOĞLU"
+          ],
+          "description": "Çalışan soyadı. İsimden eşleşmede TRIM+UPPER ile normalize edilir."
+        },
+        {
+          "name": "ADSOYAD",
           "type": "string",
           "nullable": false,
           "examples": [
@@ -170,11 +207,11 @@
       "table": "BI_CALISAN_BILGILERI",
       "note": "Referans (lookup) tablo",
       "primary_key": [
-        "SICIL_NUMARASI"
+        "EMP_NO"
       ],
       "columns": [
         {
-          "name": "SICIL_NUMARASI",
+          "name": "EMP_NO",
           "type": "number",
           "nullable": false,
           "examples": [
@@ -187,16 +224,15 @@
           "description": "Çalışan benzersiz numarası. Diğer tablolarda foreign key."
         },
         {
-          "name": "AD_SOYAD",
+          "name": "FULL_NAME",
           "type": "string",
           "nullable": false,
           "examples": [
             "İSMAİL ONUR BUMİN",
             "DİREN ARLI",
             "İREM DOĞANAY",
-            "BİROL UĞURCUKLU ",
-            "OZAN ÇÖKLÜ",
-            "İpek tan"
+            "BİROL  UĞURCUKLU ",
+            "OZAN ÇÖKLÜ"
           ],
           "description": "Ad Soyad görüntü alanı. Eşleşmede kullanılmaz."
         },
@@ -209,8 +245,7 @@
             "HR Ürün Müdürlüğü",
             "ERP Üretim Danışmanlığı Departmanı",
             "ERP Yazılım Destek Departmanı",
-            "Satış Pazarlama Müdürlüğü",
-            "BI Ürün Müdürlüğü"
+            "Satış Pazarlama Müdürlüğü"
           ],
           "description": "Departman (organizasyon birimi)."
         },
@@ -284,8 +319,8 @@
     },
     "name_matching": {
       "priority": [
-        
-        "SICIL_NUMARASI",
+        "KIMLIK_NO",
+        "EMP_NO",
         "(UPPER(TRIM(NAME)), UPPER(TRIM(SURNAME)))"
       ],
       "full_name_note": "FULL_NAME normalize edilse de aramada tercih edilmez."
@@ -317,7 +352,7 @@
         "description": "Yalnızca hakediş & kalan izin hesaplarında, işe başlangıçtan sonra olan mutabakatlı izinleri kullanılan toplamına dahil et ve nedeni metinde belirt.",
         "activation_condition": "intent == 'annual_leave_balance_calc'",
         "scope": {
-          "employee_join_key": "SICIL_NUMARASI = SICIL_NUMARASI",
+          "employee_join_key": "SICIL = EMP_NO",
           "date_anchor": "WORK_S_DATE",
           "leave_date_source": "MAKE_DATE(YILI, AY, 1)",
           "comparison": "LEAVE_DATE >= WORK_S_DATE"
@@ -387,7 +422,7 @@
           }
         },
         "usage_offset": {
-          "join_key": "SICIL_NUMARASI = SICIL_NUMARASI",
+          "join_key": "SICIL = EMP_NO",
           "leave_table": "BI_AYLIK_IZIN_KULLANIM",
           "annual_leave_type_equals": "Yıllık İzin",
           "exclude_mutabakat_by_default": true,
@@ -398,7 +433,7 @@
         },
         "output": {
           "fields": [
-            "SICIL_NUMARASI",
+            "EMP_NO",
             "FULL_NAME",
             "DEPARTMENT",
             "WORK_S_DATE",
@@ -430,15 +465,15 @@
   "sql_templates": {
     "top_annual_leave_person_company": {
       "dialect": "PostgreSQL",
-      "sql": "SELECT \n  e.SICIL_NUMARASI, e.AD_SOYAD,\n  SUM(CASE WHEN i.TUR='Gün'  THEN i.KULLANILAN ELSE 0 END) AS TOPLAM_GUN,\n  SUM(CASE WHEN i.TUR='Saat' THEN i.KULLANILAN ELSE 0 END) AS TOPLAM_SAAT\nFROM BI_AYLIK_IZIN_KULLANIM i\nJOIN BI_CALISAN_BILGILERI e ON i.SICIL_NUMARASI = e.SICIL_NUMARASI\nWHERE i.YILI = :yil\n  AND i.IZIN_TURU = 'Yıllık İzin'\n  AND e.WORK_E_DATE IS NULL\n  AND i.IZIN_TURU NOT IN ('Mutabakatlı İzin','Mutabakat')\nGROUP BY e.SICIL_NUMARASI, e.AD_SOYAD\nORDER BY (SUM(CASE WHEN i.TUR='Gün' THEN i.KULLANILAN ELSE 0 END) * 24\n        + SUM(CASE WHEN i.TUR='Saat' THEN i.KULLANILAN ELSE 0 END)) DESC\nLIMIT 1;"
+      "sql": "SELECT \n  e.EMP_NO, e.FULL_NAME,\n  SUM(CASE WHEN i.TUR='Gün'  THEN i.KULLANILAN ELSE 0 END) AS TOPLAM_GUN,\n  SUM(CASE WHEN i.TUR='Saat' THEN i.KULLANILAN ELSE 0 END) AS TOPLAM_SAAT\nFROM BI_AYLIK_IZIN_KULLANIM i\nJOIN BI_CALISAN_BILGILERI e ON i.SICIL = e.EMP_NO\nWHERE i.YILI = :yil\n  AND i.IZIN_TURU = 'Yıllık İzin'\n  AND (e.WORK_E_DATE IS NULL OR e.WORK_E_DATE >= CURRENT_DATE)\n  AND i.IZIN_TURU NOT IN ('Mutabakatlı İzin','Mutabakat')\nGROUP BY e.EMP_NO, e.FULL_NAME\nORDER BY (SUM(CASE WHEN i.TUR='Gün' THEN i.KULLANILAN ELSE 0 END) * 24\n        + SUM(CASE WHEN i.TUR='Saat' THEN i.KULLANILAN ELSE 0 END)) DESC\nLIMIT 1;"
     },
     "top_hourly_or_telafi_person_company": {
       "dialect": "PostgreSQL",
-      "sql": "SELECT \n  e.SICIL_NUMARASI, e.AD_SOYAD,\n  SUM(i.KULLANILAN) AS TOPLAM_SAAT\nFROM BI_AYLIK_IZIN_KULLANIM i\nJOIN BI_CALISAN_BILGILERI e ON i.SICIL_NUMARASI = e.SICIL_NUMARASI\nWHERE i.YILI = :yil\n  AND (i.TUR = 'Saat' OR UPPER(i.IZIN_TURU) LIKE '%TELAFİ%')\n  AND e.WORK_E_DATE IS NULL\n  AND UPPER(i.IZIN_TURU) NOT LIKE '%MUTABAKAT%'\nGROUP BY e.SICIL_NUMARASI, e.AD_SOYAD\nORDER BY SUM(i.KULLANILAN) DESC\nLIMIT 1;"
+      "sql": "SELECT \n  e.EMP_NO, e.FULL_NAME,\n  SUM(i.KULLANILAN) AS TOPLAM_SAAT\nFROM BI_AYLIK_IZIN_KULLANIM i\nJOIN BI_CALISAN_BILGILERI e ON i.SICIL = e.EMP_NO\nWHERE i.YILI = :yil\n  AND (i.TUR = 'Saat' OR UPPER(i.IZIN_TURU) LIKE '%TELAFİ%')\n  AND (e.WORK_E_DATE IS NULL OR e.WORK_E_DATE >= CURRENT_DATE)\n  AND UPPER(i.IZIN_TURU) NOT LIKE '%MUTABAKAT%'\nGROUP BY e.EMP_NO, e.FULL_NAME\nORDER BY SUM(i.KULLANILAN) DESC\nLIMIT 1;"
     },
     "person_total_leave_by_types": {
       "dialect": "PostgreSQL",
-      "sql": "-- NAME + SURNAME ile güvenilir eşleşme\nWITH emp AS (\n  SELECT * FROM BI_CALISAN_BILGILERI\n  WHERE UPPER(TRIM(NAME)) = :name_upper\n    AND UPPER(TRIM(SURNAME)) = :surname_upper\n)\nSELECT \n  i.IZIN_TURU,\n  SUM(CASE WHEN i.TUR='Gün'  THEN i.KULLANILAN ELSE 0 END) AS TOPLAM_GUN,\n  SUM(CASE WHEN i.TUR='Saat' THEN i.KULLANILAN ELSE 0 END) AS TOPLAM_SAAT\nFROM BI_AYLIK_IZIN_KULLANIM i\nJOIN emp e ON i.SICIL_NUMARASI = e.SICIL_NUMARASI\nWHERE i.YILI = :yil\n  AND e.WORK_E_DATE IS NULL\n  AND i.IZIN_TURU NOT IN ('Mutabakatlı İzin','Mutabakat')\nGROUP BY i.IZIN_TURU\nORDER BY i.IZIN_TURU;"
+      "sql": "-- NAME + SURNAME ile güvenilir eşleşme\nWITH emp AS (\n  SELECT * FROM BI_CALISAN_BILGILERI\n  WHERE UPPER(TRIM(NAME)) = :name_upper\n    AND UPPER(TRIM(SURNAME)) = :surname_upper\n)\nSELECT \n  i.IZIN_TURU,\n  SUM(CASE WHEN i.TUR='Gün'  THEN i.KULLANILAN ELSE 0 END) AS TOPLAM_GUN,\n  SUM(CASE WHEN i.TUR='Saat' THEN i.KULLANILAN ELSE 0 END) AS TOPLAM_SAAT\nFROM BI_AYLIK_IZIN_KULLANIM i\nJOIN emp e ON i.SICIL = e.EMP_NO\nWHERE i.YILI = :yil\n  AND (e.WORK_E_DATE IS NULL OR e.WORK_E_DATE >= CURRENT_DATE)\n  AND i.IZIN_TURU NOT IN ('Mutabakatlı İzin','Mutabakat')\nGROUP BY i.IZIN_TURU\nORDER BY i.IZIN_TURU;"
     }
   },
   "deprecated_notes": [

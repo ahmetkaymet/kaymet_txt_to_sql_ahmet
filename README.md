@@ -78,6 +78,18 @@ cd AImet_txt_to_sql
 
 ### 2. **Backend Setup**
 ```bash
+# Create and activate virtual environment (RECOMMENDED)
+python -m venv .venv
+
+# Activate virtual environment
+# macOS/Linux:
+source .venv/bin/activate
+# Windows:
+.venv\Scripts\activate
+
+# Windows'ta setuptools hatası alırsanız:
+pip install --upgrade pip setuptools wheel
+
 # Install Python dependencies
 pip install -r requirements.txt
 
@@ -186,6 +198,16 @@ npm install
 # Required: OpenAI API Key
 OPENAI_API_KEY=sk-your-openai-api-key-here
 
+# Oracle Database Configuration (Local with Static IP)
+ORACLE_USER=your_username
+ORACLE_PASSWORD=your_password
+ORACLE_DSN=your_static_ip:1521/your_service_name
+
+# Example DSN formats:
+# For SID: 192.168.1.100:1521/ORCL
+# For Service Name: 192.168.1.100:1521/your_service_name
+# For Easy Connect: 192.168.1.100:1521/ORCL
+
 # Optional: Custom configurations
 OPENAI_MODEL=gpt-4o
 LOG_LEVEL=INFO
@@ -200,6 +222,32 @@ LOG_LEVEL=INFO
 2. Create a new API key
 3. Add it to your `.env` file
 4. **Never commit your .env file to version control!**
+
+### **Oracle Database Setup (Local with Static IP)**
+1. **Create your `.env` file** with the following Oracle configuration:
+   ```bash
+   ORACLE_USER=your_username
+   ORACLE_PASSWORD=your_password
+   ORACLE_DSN=192.168.1.100:1521/ORCL
+   ```
+
+2. **DSN Format Examples:**
+   - **SID Connection**: `192.168.1.100:1521/ORCL`
+   - **Service Name**: `192.168.1.100:1521/your_service_name`
+   - **Easy Connect**: `192.168.1.100:1521/ORCL`
+
+3. **Important Notes:**
+   - Replace `192.168.1.100` with your Oracle server's static IP address
+   - Replace `1521` with your Oracle listener port (default is 1521)
+   - Replace `ORCL` with your database SID or service name
+   - No wallet configuration needed for local connections
+   - Ensure your Oracle server allows connections from your application's IP
+
+4. **Test Your Connection:**
+   ```bash
+   python test_oracle_connection.py
+   ```
+   Bu script Oracle bağlantınızı test eder ve hata durumunda çözüm önerileri sunar.
 
 ---
 

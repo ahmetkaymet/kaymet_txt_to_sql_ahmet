@@ -1,17 +1,21 @@
 # Core Framework
 fastapi==0.104.1
 uvicorn[standard]==0.24.0
+python-dotenv==1.0.0
+oracledb==2.0.1
 
-# AI and LangChain
-openai>=1.10.0,<2.0.0
-langchain>=0.1.0
-langchain-openai>=0.0.5
-langchain-community>=0.0.10
-langchain-core>=0.1.0
+# AI - OpenAI
+openai==1.12.0
+
+# LangChain - Pip otomatik versiyon çözümü
+langchain
+langchain-openai
+langchain-community
+langchain-core
 
 # CrewAI for multi-agent systems
-crewai>=0.28.0
-crewai-tools>=0.1.0
+crewai
+crewai-tools
 
 # Data Processing
 pandas==2.1.4
@@ -21,11 +25,7 @@ numpy==1.24.3
 plotly==5.17.0
 kaleido==0.2.1
 
-# Database
-oracledb==2.0.1
-python-dotenv==1.0.0
-
 # Utilities
 python-multipart==0.0.6
 pydantic==2.5.0
-typing-extensions>=4.8.0 
+typing-extensions>=4.8.0

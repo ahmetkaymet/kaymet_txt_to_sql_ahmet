@@ -6,7 +6,7 @@
   "tables": [
     {
       "table": "BI_CALISAN_BILGILERI",
-      "primary_key": "SICIL_NUMARASI",
+      "primary_key": "EMP_NO",
       "columns": [
         {
           "name": "SICIL_NUMARASI",
@@ -40,27 +40,27 @@
         },
         {
           "name": "WORK_S_DATE",
-          "type": "timestamp",
+          "type": "date",
           "nullable": true,
-          "description": "İşe başlangıç tarihi (TIMESTAMP tipi, format: '2020-01-20 00:00:00')"
+          "description": "İşe başlangıç tarihi (tarih, saat yok)"
         },
         {
           "name": "WORK_E_DATE",
-          "type": "varchar2",
+          "type": "date",
           "nullable": true,
-          "description": "İşten çıkış tarihi (VARCHAR2 tipi, format: '2/14/25')"
+          "description": "İşten çıkış tarihi (tarih, saat yok)"
         },
         {
           "name": "WORKING_STATUS",
           "type": "string",
           "nullable": true,
-          "description": "Çalışma durumu (örn. Tam Zamanlı, Yarı Zamanlı)"
+          "description": "Çalışma durumu (örn. Aktif, Pasif, Stajyer)"
         },
         {
           "name": "EDUCATION",
           "type": "string",
           "nullable": true,
-          "description": "Öğrenim durumu(Örn. Lise, Üniversite, Yüksek Lisans, Doktora)"
+          "description": "Öğrenim durumu"
         },
         {
           "name": "GENDER",
@@ -72,41 +72,21 @@
           "name": "LOCATION",
           "type": "string",
           "nullable": true,
-          "description": "Şehir ismi. Ankara, İstanbul, İzmir gibi"
+          "description": "Lokasyon"
         },
         {
           "name": "YEARS_OF_SERVICE",
           "type": "number",
           "nullable": true,
-          "description": "Hizmet süresi (yıl). Örn. 10.3, 5, 3.2, 1"
+          "description": "Hizmet süresi (yıl)"
         }
       ]
     }
   ],
   "business_rules": {
-    "date_format_rules": {
-      "description": "Tarih formatı kuralları - WORK_S_DATE TIMESTAMP, WORK_E_DATE VARCHAR2",
-      "critical": true,
-      "rules": [
-        "🚨 WORK_S_DATE: TIMESTAMP(6) tipi, format: '2020-01-20 00:00:00'",
-        "🚨 WORK_E_DATE: VARCHAR2(4000) tipi, format: '2/14/25' (MM/DD/YY)",
-        "🚨 WORK_S_DATE için: TO_DATE('2025-01-01', 'YYYY-MM-DD') kullanılabilir",
-        "🚨 WORK_E_DATE için: SUBSTR(WORK_E_DATE, -2) = '25' (2025 için)",
-        "🚨 WORK_E_DATE için: WORK_E_DATE BETWEEN '1/1/25' AND '12/31/25'",
-        "🚨 NEVER use TO_DATE() function with WORK_E_DATE field - IT WILL FAIL",
-        "🚨 Use string comparison for WORK_E_DATE filtering ONLY",
-        "🚨 WORK_E_DATE is STRING, not DATE - treat as text field"
-      ],
-      "examples": {
-        "work_s_date_filter": "WHERE WORK_S_DATE <= TO_DATE('2025-01-01', 'YYYY-MM-DD')",
-        "work_e_date_2025": "WHERE SUBSTR(WORK_E_DATE, -2) = '25'",
-        "work_e_date_range": "WHERE WORK_E_DATE BETWEEN '1/1/25' AND '12/31/25'",
-        "work_e_date_wrong": "❌ WHERE WORK_E_DATE BETWEEN TO_DATE('01-JAN-2025', 'DD-MON-YYYY') AND TO_DATE('31-DEC-2025', 'DD-MON-YYYY')"
-      }
-    },
     "active_employee_definition": {
-      "description": "Aktif çalışan: WORK_E_DATE IS NULL (VARCHAR2 type, not DATE).",
-      "sql": "WORK_E_DATE IS NULL",
+      "description": "Aktif çalışan: WORK_E_DATE IS NULL veya >= CURRENT_DATE.",
+      "sql": "(WORK_E_DATE IS NULL OR WORK_E_DATE >= CURRENT_DATE)",
       "applies_to": [
         "counts",
         "lists",
@@ -131,12 +111,13 @@
     "identity_matching": {
       "description": "Kişi eşleştirme önceliği ve güvenliği.",
       "priority": [
+        "KIMLIK_NO (varsa)",
         "EMP_NO",
         "NAME+SURNAME (izin tablosundan gerekiyorsa)"
       ],
       "notes": [
         "FULL_NAME gösterim içindir; aramalarda NAME+SURNAME tercih edilir (ilgili tabloda mevcutsa).",
-        "Aynı ad-soyada birden çok kayıt çıkarsa EMP_NO istenir."
+        "Aynı ad-soyada birden çok kayıt çıkarsa TCKN/EMP_NO istenir."
       ]
     },
     "date_handling": {
@@ -166,29 +147,31 @@
             "HR Ürün Müdürlüğü"
           ],
           "to": "HR Ürün Müdürlüğü"
-        },
-        {
-          "from": [
-            "BI müdürlüğü",
-            "BI Müdürlüğü",
-            "BI MÜDÜRLÜĞÜ"
-          ],
-          "to": "BI Ürün Müdürlüğü",
-          "note": "Kullanıcı 'BI müdürlüğü' dediğinde 'BI Ürün Müdürlüğü' departmanına yönlendir"
         }
       ]
     },
-    
+    "intern_rules": {
+      "description": "Stajyer sayımları ve filtreleri.",
+      "rules": [
+        "Aktif stajyer sayısı: active_employee_definition filtresi + WORKING_STATUS='Stajyer'.",
+        "Toplam stajyer sayısı: WORKING_STATUS='Stajyer' (aktiflik şartı olmadan)."
+      ]
+    },
     "safe_answering_policy": {
       "description": "Kişisel bilgi sorgularında %99 emin olmadan yanıt verme; önce veriyle doğrula.",
       "enforced": true,
       "examples": [
-        
+        "Çoklu ad eşleşmesinde TCKN/EMP_NO iste.",
         "Belirsiz tarih aralığında kullanıcıdan netleştime iste.",
         "Departman adı farklı varyasyonlarda gelirse normalize edip teyit et."
       ]
     },
-    
+    "privacy": {
+      "description": "TCKN gibi hassas alanların sadece filtre amaçlı kullanımı; çıktıda maskeleme.",
+      "masking": {
+        "TCKN": "****{last4}"
+      }
+    },
     "intent_detection": {
       "description": "Kullanıcı sorusundan niyeti (intent) çıkart ve %99 emin olmadan yanıt üretme.",
       "intents": [
@@ -247,8 +230,8 @@
         "Türkçe case-insensitive eşleşme ve tarih normalizasyonu genel kurallardan devralınır."
       ],
       "sql_snippets": {
-        "company_year": "WITH ayrilan AS (SELECT COUNT(*) c FROM BI_CALISAN_BILGILERI WHERE WORK_E_DATE IS NOT NULL), bas AS (SELECT COUNT(*) c FROM BI_CALISAN_BILGILERI WHERE WORK_S_DATE <= DATE 'YYYY-01-01' AND WORK_E_DATE IS NULL), bit AS (SELECT COUNT(*) c FROM BI_CALISAN_BILGILERI WHERE WORK_S_DATE <= DATE 'YYYY-12-31' AND WORK_E_DATE IS NULL) SELECT ayrilan.c AS ayrilan, ((bas.c + bit.c)/2.0) AS ort_calisan, (ayrilan.c/((bas.c+bit.c)/2.0))*100 AS turnover_pct FROM ayrilan, bas, bit;",
-        "by_department": "WITH e AS (SELECT DEPARTMENT, WORK_S_DATE, WORK_E_DATE FROM BI_CALISAN_BILGILERI) SELECT d.DEPARTMENT, ayr.c AS ayrilan, ((bas.c + bit.c)/2.0) AS ort_calisan, (CASE WHEN ((bas.c + bit.c)/2.0)>0 THEN ROUND(ayrilan*100.0/((bas.c+bit.c)/2.0),2) ELSE 0 END) AS turnover_pct FROM (SELECT DISTINCT DEPARTMENT FROM e) d LEFT JOIN (SELECT DEPARTMENT, COUNT(*) c FROM e WHERE WORK_E_DATE IS NOT NULL GROUP BY DEPARTMENT) ayr ON ayr.DEPARTMENT=d.DEPARTMENT LEFT JOIN (SELECT DEPARTMENT, COUNT(*) c FROM e WHERE WORK_S_DATE <= DATE 'YYYY-01-01' AND WORK_E_DATE IS NULL GROUP BY DEPARTMENT) bas ON bas.DEPARTMENT=d.DEPARTMENT LEFT JOIN (SELECT DEPARTMENT, COUNT(*) c FROM e WHERE WORK_S_DATE <= DATE 'YYYY-12-31' AND WORK_E_DATE IS NULL GROUP BY DEPARTMENT) bit ON bit.DEPARTMENT=d.DEPARTMENT;"
+        "company_year": "WITH ayrilan AS (SELECT COUNT(*) c FROM BI_CALISAN_BILGILERI WHERE WORK_E_DATE BETWEEN DATE 'YYYY-01-01' AND DATE 'YYYY-12-31'), bas AS (SELECT COUNT(*) c FROM BI_CALISAN_BILGILERI WHERE WORK_S_DATE <= DATE 'YYYY-01-01' AND (WORK_E_DATE IS NULL OR WORK_E_DATE >= DATE 'YYYY-01-01')), bit AS (SELECT COUNT(*) c FROM BI_CALISAN_BILGILERI WHERE WORK_S_DATE <= DATE 'YYYY-12-31' AND (WORK_E_DATE IS NULL OR WORK_E_DATE >= DATE 'YYYY-12-31')) SELECT ayrilan.c AS ayrilan, ((bas.c + bit.c)/2.0) AS ort_calisan, (ayrilan.c/((bas.c+bit.c)/2.0))*100 AS turnover_pct FROM ayrilan, bas, bit;",
+        "by_department": "WITH e AS (SELECT DEPARTMENT, WORK_S_DATE, WORK_E_DATE FROM BI_CALISAN_BILGILERI) SELECT d.DEPARTMENT, ayr.c AS ayrilan, ((bas.c + bit.c)/2.0) AS ort_calisan, (CASE WHEN ((bas.c + bit.c)/2.0)>0 THEN ROUND(ayrilan*100.0/((bas.c+bit.c)/2.0),2) ELSE 0 END) AS turnover_pct FROM (SELECT DISTINCT DEPARTMENT FROM e) d LEFT JOIN (SELECT DEPARTMENT, COUNT(*) c FROM e WHERE WORK_E_DATE BETWEEN DATE 'YYYY-01-01' AND DATE 'YYYY-12-31' GROUP BY DEPARTMENT) ayr ON ayr.DEPARTMENT=d.DEPARTMENT LEFT JOIN (SELECT DEPARTMENT, COUNT(*) c FROM e WHERE WORK_S_DATE <= DATE 'YYYY-01-01' AND (WORK_E_DATE IS NULL OR WORK_E_DATE >= DATE 'YYYY-01-01') GROUP BY DEPARTMENT) bas ON bas.DEPARTMENT=d.DEPARTMENT LEFT JOIN (SELECT DEPARTMENT, COUNT(*) c FROM e WHERE WORK_S_DATE <= DATE 'YYYY-12-31' AND (WORK_E_DATE IS NULL OR WORK_E_DATE >= DATE 'YYYY-12-31') GROUP BY DEPARTMENT) bit ON bit.DEPARTMENT=d.DEPARTMENT;"
       },
       "enforced": true
     },
@@ -280,7 +263,7 @@
       "join_flow": [
         "1) Çalışan tablosunda isimle tekil kaydı bul (FULL_NAME).",
         "2) EMP_NO al.",
-        "3) İzin tablosunda SICIL_NUMARASI = SICIL_NUMARASI ile join yap.",
+        "3) İzin tablosunda SICIL = EMP_NO ile join yap.",
         "4) Kullanıcı intentine göre izin türü/ dönem/ birim kurallarını uygula."
       ],
       "leave_rules_application": {
@@ -290,8 +273,8 @@
         "active_filter": "Kişi-bazlı geçmiş izin toplamlarında aktif filtre kaldırılabilir; sayım/dağılım raporlarında varsayılan aktif filtre uygulanır."
       },
       "sql_snippets": {
-        "by_fullname_exact": "-- Ad + Soyad verildiğinde (tek boşluk kuralıyla tam eşitlik)\nWITH emp AS (\n  SELECT e.SICIL_NUMARASI, e.AD_SOYAD\n  FROM BI_CALISAN_BILGILERI e\n  WHERE UPPER(TRIM(regexp_replace(e.FULL_NAME, '\\s+', ' ', 'g'))) = UPPER(TRIM(regexp_replace(:FULLNAME, '\\s+', ' ', 'g')))\n  LIMIT 1\n)\nSELECT emp.AD_SOYAD,\n       SUM(CASE WHEN i.TUR='Gün'  THEN i.KULLANILAN ELSE 0 END) AS TOPLAM_GUN,\n       SUM(CASE WHEN i.TUR='Saat' THEN i.KULLANILAN ELSE 0 END) AS TOPLAM_SAAT\nFROM BI_AYLIK_IZIN_KULLANIM i\nJOIN emp ON i.SICIL_NUMARASI = emp.SICIL_NUMARASI\nWHERE i.IZIN_TURU = :IZIN_TURU\n  AND UPPER(COALESCE(i.IZIN_TURU,'')) NOT LIKE '%MUTABAKAT%'\nGROUP BY emp.AD_SOYAD;",
-        "by_firstname_only": "-- Sadece ad verildiğinde (ilk kelime eşleşmesi; uygulama katmanında COUNT=1 doğrulaması yap)\nWITH params AS (\n  SELECT UPPER(TRIM(:AD)) AS AD\n), emp AS (\n  SELECT e.SICIL_NUMARASI, e.AD_SOYAD\n  FROM BI_CALISAN_BILGILERI e CROSS JOIN params p\n  WHERE split_part(UPPER(regexp_replace(TRIM(e.FULL_NAME), '\\s+', ' ', 'g')), ' ', 1) = p.AD\n  LIMIT 1\n)\nSELECT emp.AD_SOYAD,\n       SUM(CASE WHEN i.TUR='Gün'  THEN i.KULLANILAN ELSE 0 END) AS TOPLAM_GUN,\n       SUM(CASE WHEN i.TUR='Saat' THEN i.KULLANILAN ELSE 0 END) AS TOPLAM_SAAT\nFROM BI_AYLIK_IZIN_KULLANIM i\nJOIN emp ON i.SICIL_NUMARASI = emp.SICIL_NUMARASI\nWHERE i.IZIN_TURU = :IZIN_TURU\n  AND UPPER(COALESCE(i.IZIN_TURU,'')) NOT LIKE '%MUTABAKAT%'\nGROUP BY emp.AD_SOYAD;"
+        "by_fullname_exact": "-- Ad + Soyad verildiğinde (tek boşluk kuralıyla tam eşitlik)\nWITH emp AS (\n  SELECT e.EMP_NO, e.FULL_NAME\n  FROM BI_CALISAN_BILGILERI e\n  WHERE UPPER(TRIM(regexp_replace(e.FULL_NAME, '\\s+', ' ', 'g'))) = UPPER(TRIM(regexp_replace(:FULLNAME, '\\s+', ' ', 'g')))\n  LIMIT 1\n)\nSELECT emp.FULL_NAME,\n       SUM(CASE WHEN i.TUR='Gün'  THEN i.KULLANILAN ELSE 0 END) AS TOPLAM_GUN,\n       SUM(CASE WHEN i.TUR='Saat' THEN i.KULLANILAN ELSE 0 END) AS TOPLAM_SAAT\nFROM BI_AYLIK_IZIN_KULLANIM i\nJOIN emp ON i.SICIL = emp.EMP_NO\nWHERE i.IZIN_TURU = :IZIN_TURU\n  AND UPPER(COALESCE(i.IZIN_TURU,'')) NOT LIKE '%MUTABAKAT%'\nGROUP BY emp.FULL_NAME;",
+        "by_firstname_only": "-- Sadece ad verildiğinde (ilk kelime eşleşmesi; uygulama katmanında COUNT=1 doğrulaması yap)\nWITH params AS (\n  SELECT UPPER(TRIM(:AD)) AS AD\n), emp AS (\n  SELECT e.EMP_NO, e.FULL_NAME\n  FROM BI_CALISAN_BILGILERI e CROSS JOIN params p\n  WHERE split_part(UPPER(regexp_replace(TRIM(e.FULL_NAME), '\\s+', ' ', 'g')), ' ', 1) = p.AD\n  LIMIT 1\n)\nSELECT emp.FULL_NAME,\n       SUM(CASE WHEN i.TUR='Gün'  THEN i.KULLANILAN ELSE 0 END) AS TOPLAM_GUN,\n       SUM(CASE WHEN i.TUR='Saat' THEN i.KULLANILAN ELSE 0 END) AS TOPLAM_SAAT\nFROM BI_AYLIK_IZIN_KULLANIM i\nJOIN emp ON i.SICIL = emp.EMP_NO\nWHERE i.IZIN_TURU = :IZIN_TURU\n  AND UPPER(COALESCE(i.IZIN_TURU,'')) NOT LIKE '%MUTABAKAT%'\nGROUP BY emp.FULL_NAME;"
       },
       "security_privacy": {
         "tckn_usage": "TCKN sadece kimlik doğrulama/filtre için; çıktıdaki TCKN maske formatı: ****{last4}.",
@@ -314,15 +297,15 @@
     }
   },
   "sql_snippets": {
-    "counts_active_employees": "SELECT COUNT(*) FROM BI_CALISAN_BILGILERI WHERE WORK_E_DATE IS NULL;",
-    "dept_distribution_active": "SELECT DEPARTMENT, COUNT(*) AS KISI_SAYISI FROM BI_CALISAN_BILGILERI WHERE WORK_E_DATE IS NULL GROUP BY DEPARTMENT ORDER BY KISI_SAYISI DESC;",
-    "active_interns": "SELECT COUNT(*) FROM BI_CALISAN_BILGILERI WHERE WORK_E_DATE IS NULL AND WORKING_STATUS='Stajyer';"
+    "counts_active_employees": "SELECT COUNT(*) FROM BI_CALISAN_BILGILERI WHERE (WORK_E_DATE IS NULL OR WORK_E_DATE >= CURRENT_DATE);",
+    "dept_distribution_active": "SELECT DEPARTMENT, COUNT(*) AS KISI_SAYISI FROM BI_CALISAN_BILGILERI WHERE (WORK_E_DATE IS NULL OR WORK_E_DATE >= CURRENT_DATE) GROUP BY DEPARTMENT ORDER BY KISI_SAYISI DESC;",
+    "active_interns": "SELECT COUNT(*) FROM BI_CALISAN_BILGILERI WHERE (WORK_E_DATE IS NULL OR WORK_E_DATE >= CURRENT_DATE) AND WORKING_STATUS='Stajyer';"
   },
   "tests": [
     {
       "name": "aktif_sayimi_zorunlu",
       "assertion": "Kaç çalışan var? sorusunda aktif filtre uygulanmalı",
-      "sql": "SELECT COUNT(*) FROM BI_CALISAN_BILGILERI WHERE WORK_E_DATE IS NULL;"
+      "sql": "SELECT COUNT(*) FROM BI_CALISAN_BILGILERI WHERE (WORK_E_DATE IS NULL OR WORK_E_DATE >= CURRENT_DATE);"
     },
     {
       "name": "turkce_insensitive_arama",
