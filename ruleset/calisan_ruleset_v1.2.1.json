@@ -40,15 +40,15 @@
         },
         {
           "name": "WORK_S_DATE",
-          "type": "date",
+          "type": "timestamp",
           "nullable": true,
-          "description": "İşe başlangıç tarihi (tarih, saat yok)"
+          "description": "İşe başlangıç tarihi (TIMESTAMP tipi, format: '2020-01-20 00:00:00')"
         },
         {
           "name": "WORK_E_DATE",
-          "type": "date",
+          "type": "varchar2",
           "nullable": true,
-          "description": "İşten çıkış tarihi (tarih, saat yok)"
+          "description": "İşten çıkış tarihi (VARCHAR2 tipi, format: '2/14/25')"
         },
         {
           "name": "WORKING_STATUS",
@@ -84,6 +84,26 @@
     }
   ],
   "business_rules": {
+    "date_format_rules": {
+      "description": "Tarih formatı kuralları - WORK_S_DATE TIMESTAMP, WORK_E_DATE VARCHAR2",
+      "critical": true,
+      "rules": [
+        "🚨 WORK_S_DATE: TIMESTAMP(6) tipi, format: '2020-01-20 00:00:00'",
+        "🚨 WORK_E_DATE: VARCHAR2(4000) tipi, format: '2/14/25' (MM/DD/YY)",
+        "🚨 WORK_S_DATE için: TO_DATE('2025-01-01', 'YYYY-MM-DD') kullanılabilir",
+        "🚨 WORK_E_DATE için: SUBSTR(WORK_E_DATE, -2) = '25' (2025 için)",
+        "🚨 WORK_E_DATE için: WORK_E_DATE BETWEEN '1/1/25' AND '12/31/25'",
+        "🚨 NEVER use TO_DATE() function with WORK_E_DATE field - IT WILL FAIL",
+        "🚨 Use string comparison for WORK_E_DATE filtering ONLY",
+        "🚨 WORK_E_DATE is STRING, not DATE - treat as text field"
+      ],
+      "examples": {
+        "work_s_date_filter": "WHERE WORK_S_DATE <= TO_DATE('2025-01-01', 'YYYY-MM-DD')",
+        "work_e_date_2025": "WHERE SUBSTR(WORK_E_DATE, -2) = '25'",
+        "work_e_date_range": "WHERE WORK_E_DATE BETWEEN '1/1/25' AND '12/31/25'",
+        "work_e_date_wrong": "❌ WHERE WORK_E_DATE BETWEEN TO_DATE('01-JAN-2025', 'DD-MON-YYYY') AND TO_DATE('31-DEC-2025', 'DD-MON-YYYY')"
+      }
+    },
     "active_employee_definition": {
       "description": "Aktif çalışan: WORK_E_DATE IS NULL (VARCHAR2 type, not DATE).",
       "sql": "WORK_E_DATE IS NULL",
@@ -146,6 +166,15 @@
             "HR Ürün Müdürlüğü"
           ],
           "to": "HR Ürün Müdürlüğü"
+        },
+        {
+          "from": [
+            "BI müdürlüğü",
+            "BI Müdürlüğü",
+            "BI MÜDÜRLÜĞÜ"
+          ],
+          "to": "BI Ürün Müdürlüğü",
+          "note": "Kullanıcı 'BI müdürlüğü' dediğinde 'BI Ürün Müdürlüğü' departmanına yönlendir"
         }
       ]
     },

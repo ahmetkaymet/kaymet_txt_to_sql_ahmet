@@ -252,11 +252,11 @@ class TableAnalysisCrew:
     def create_agent(self) -> Agent:
         """Create table analysis agent"""
         return Agent(
-            role="HR Database Schema Expert",
-            goal="Determine the most appropriate tables and columns for HR analytics queries",
-            backstory=f"""You are an expert HR database analyst with deep knowledge of HR data structures and Oracle SQL syntax.
-            You understand the relationships between employee data, leave data, and organizational structures.
-            You always choose the most efficient and accurate tables and columns for any HR query.
+            role="İK Veritabanı Şema Uzmanı",
+            goal="İK analitik sorguları için en uygun tabloları ve sütunları belirle",
+            backstory=f"""Sen İK veri yapıları ve Oracle SQL sözdizimi konusunda derin bilgiye sahip uzman bir İK veritabanı analistisin.
+            Çalışan verileri, izin verileri ve organizasyonel yapılar arasındaki ilişkileri anlıyorsun.
+            Her İK sorgusu için en verimli ve doğru tabloları ve sütunları seçiyorsun.
             
             COMPLETE TABLE SCHEMAS FROM RULESET:
             {self.ruleset_manager.get_table_schemas_info()}
@@ -307,7 +307,7 @@ class TableAnalysisCrew:
                 "target_tables": ["table1", "table2"],
                 "target_columns": ["column1", "column2"],
                 "joins_required": ["table1.column = table2.column"],
-                "reasoning": "Explanation of your choices"
+                "reasoning": "Explanation of your choices IN TURKISH"
             }}
             """,
             agent=self.create_agent(),
@@ -328,11 +328,11 @@ class BusinessRulesCrew:
     def create_agent(self) -> Agent:
         """Create business rules agent"""
         return Agent(
-            role="HR Business Rules Expert",
-            goal="Apply HR business rules and constraints to ensure accurate and compliant data analysis",
-            backstory="""You are an expert HR business analyst with deep knowledge of HR policies, 
-            employment laws, and business rules. You ensure all HR analytics follow proper business logic,
-            data privacy rules, and organizational policies. You never compromise on data accuracy and compliance.""",
+            role="İK İş Kuralları Uzmanı",
+            goal="Doğru ve uyumlu veri analizi için İK iş kurallarını ve kısıtlamalarını uygula",
+            backstory="""Sen İK politikaları, iş hukuku ve iş kuralları konusunda derin bilgiye sahip uzman bir İK iş analistisin.
+            Tüm İK analitiklerinin doğru iş mantığını, veri gizliliği kurallarını ve organizasyonel politikaları takip etmesini sağlıyorsun.
+            Veri doğruluğu ve uyumluluk konusunda asla taviz vermiyorsun.""",
             verbose=True,
             allow_delegation=False,
             llm=self.llm
@@ -381,7 +381,7 @@ class BusinessRulesCrew:
                 "required_filters": ["filter1", "filter2"],
                 "constraints": ["constraint1", "constraint2"],
                 "sql_modifications": "Specific SQL modifications needed",
-                "compliance_notes": "Any compliance or privacy considerations"
+                "compliance_notes": "Any compliance or privacy considerations IN TURKISH"
             }}
             """,
             agent=self.create_agent(),
@@ -401,11 +401,11 @@ class IntentDetectionCrew:
     def create_agent(self) -> Agent:
         """Create intent detection agent"""
         return Agent(
-            role="HR Query Intent Specialist",
-            goal="Detect user intent and clarify ambiguous HR queries to ensure accurate results",
-            backstory="""You are an expert in understanding HR-related queries and user intentions.
-            You excel at identifying what users really want to know from their HR data questions.
-            You always ask for clarification when queries are ambiguous to ensure 99% accuracy.""",
+            role="İK Sorgu Niyet Uzmanı",
+            goal="Kullanıcı niyetini tespit et ve belirsiz İK sorgularını netleştirerek doğru sonuçlar sağla",
+            backstory="""Sen İK ile ilgili sorguları ve kullanıcı niyetlerini anlama konusunda uzmansın.
+            Kullanıcıların İK veri sorularından gerçekte ne öğrenmek istediklerini belirlemede mükemmelsin.
+            Sorgular belirsiz olduğunda %99 doğruluk sağlamak için her zaman açıklama istiyorsun.""",
             verbose=True,
             allow_delegation=False,
             llm=self.llm
@@ -444,7 +444,7 @@ class IntentDetectionCrew:
                 "ambiguities": ["ambiguity1", "ambiguity2"],
                 "missing_parameters": ["param1", "param2"],
                 "clarification_questions": ["question1", "question2"],
-                "refined_query": "Clarified version of the query"
+                "refined_query": "Clarified version of the query IN TURKISH"
             }}
             """,
             agent=self.create_agent(),
@@ -465,11 +465,11 @@ class ResponseGeneratorCrew:
     def create_agent(self) -> Agent:
         """Create response generator agent"""
         return Agent(
-            role="HR SQL Query Generator",
-            goal="Generate accurate, efficient, and compliant SQL queries for HR analytics",
-            backstory=f"""You are an expert SQL developer specializing in HR analytics and Oracle SQL syntax.
-            You create optimized, secure, and business-rule-compliant SQL queries.
-            You always follow best practices for data privacy and query performance.
+            role="İK SQL Sorgu Üreticisi",
+            goal="İK analitikleri için doğru, verimli ve uyumlu SQL sorguları üret",
+            backstory=f"""Sen İK analitikleri ve Oracle SQL sözdizimi konusunda uzmanlaşmış deneyimli bir SQL geliştiricisisin.
+            Optimize edilmiş, güvenli ve iş kuralı uyumlu SQL sorguları oluşturuyorsun.
+            Veri gizliliği ve sorgu performansı için en iyi uygulamaları her zaman takip ediyorsun.
             
             COMPLETE TABLE SCHEMAS FROM RULESET:
             {self.ruleset_manager.get_table_schemas_info()}
@@ -506,9 +506,9 @@ class ResponseGeneratorCrew:
             
             Generate:
             1. A complete, executable Oracle SQL query (use {datetime.now().year} for current year, use YILI = {datetime.now().year} for BI_AYLIK_IZIN_KULLANIM table, NEVER use semicolon at the end)
-            2. A detailed explanation of the query
+            2. A detailed explanation of the query IN TURKISH
             3. Chart configuration for visualization
-            4. Any important notes or warnings
+            4. Any important notes or warnings IN TURKISH
             
             CRITICAL: Use the EXACT table and column names from the ruleset schemas above. 
             Pay special attention to foreign key relationships and column descriptions.
@@ -516,15 +516,15 @@ class ResponseGeneratorCrew:
             Return your response in JSON format:
             {{
                 "sql_query": "Complete SQL query",
-                "explanation": "Detailed explanation of the query and analysis",
+                "explanation": "Detailed explanation of the query and analysis IN TURKISH - explain what the query does, what business rules it follows, and what insights it provides for HR decision-making",
                 "chart_config": {{
                     "chart_type": "bar|line|pie|table",
-                    "title": "Chart title",
+                    "title": "Chart title IN TURKISH",
                     "x_column": "x-axis column",
                     "y_column": "y-axis column"
                 }},
-                "notes": ["note1", "note2"],
-                "warnings": ["warning1", "warning2"]
+                "notes": ["note1 IN TURKISH", "note2 IN TURKISH"],
+                "warnings": ["warning1 IN TURKISH", "warning2 IN TURKISH"]
             }}
             """,
             agent=self.create_agent(),

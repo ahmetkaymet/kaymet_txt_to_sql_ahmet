@@ -720,6 +720,11 @@ USER QUERY: {natural_query}
 
 🔥 ULTRA-CRITICAL INSTRUCTIONS FOR BUSINESS RULES ANALYSIS:
 
+🚨 CRITICAL DATE FORMAT WARNING 🚨:
+- WORK_E_DATE is VARCHAR2(4000) - NEVER use TO_DATE() with it
+- Use: SUBSTR(WORK_E_DATE, -2) = '25' for year filtering
+- WORK_S_DATE is TIMESTAMP(6) - can use TO_DATE() with it
+
 1. **DEEP BUSINESS RULES ANALYSIS** 🎯:
    - READ EVERY SINGLE BUSINESS RULE in the ruleset context above
    - UNDERSTAND the formulas, constraints, and logic for each rule
@@ -741,10 +746,23 @@ USER QUERY: {natural_query}
    - leave_types_split: Yıllık İzin vs Yıllık İzne Mahsuben are SEPARATE types
    - Use correct IZIN_TURU filtering as specified in rules
 
-4. **STRING NORMALIZATION RULES** 🔤:
+4. **STRING NORMALIZATION RULES** 🔤 - CRITICAL FOR DATA MATCHING:
+   - ALWAYS use UPPER(TRIM()) for ALL string comparisons to avoid case sensitivity issues
+   - Department names: UPPER(TRIM(DEPARTMENT)) = 'BI ÜRÜN MÜDÜRLÜĞÜ'
+   - Leave types: UPPER(TRIM(IZIN_TURU)) = 'YILLIK İZIN'
+   - Employee names: UPPER(TRIM(AD_SOYAD)) for matching
    - Apply Turkish character normalization: i→İ, ı→I, ç→Ç, ğ→Ğ, ş→Ş, ö→Ö, ü→Ü
-   - Case-insensitive searches for ALL text fields
-   - Normalize both user input AND database values
+   - NEVER use exact case matching for string fields - always normalize
+
+5. **DATE FORMAT RULES** 📅 - CRITICAL FOR DATE FILTERING - MANDATORY:
+   - WORK_S_DATE: TIMESTAMP(6) type, format: '2020-01-20 00:00:00'
+   - WORK_E_DATE: VARCHAR2(4000) type, format: '2/14/25' (MM/DD/YY)
+   - WORK_S_DATE filtering: TO_DATE('2025-01-01', 'YYYY-MM-DD')
+   - WORK_E_DATE year filtering: SUBSTR(WORK_E_DATE, -2) = '25' (for 2025)
+   - WORK_E_DATE range: WORK_E_DATE BETWEEN '1/1/25' AND '12/31/25'
+   - 🚨 NEVER use TO_DATE() function with WORK_E_DATE field - IT WILL FAIL
+   - 🚨 WORK_E_DATE is STRING, not DATE - use string comparison only
+   - 🚨 Example: WHERE SUBSTR(WORK_E_DATE, -2) = '25' NOT WHERE WORK_E_DATE BETWEEN TO_DATE(...)
 
 5. **NAME MATCHING PRIORITY** 👤:
    - Priority order: KIMLIK_NO > EMP_NO > (UPPER(TRIM(NAME)), UPPER(TRIM(SURNAME)))
@@ -1060,6 +1078,11 @@ def create_langchain_pipeline():
 
     🔥 ULTRA-CRITICAL INSTRUCTIONS FOR BUSINESS RULES ANALYSIS:
 
+    🚨 CRITICAL DATE FORMAT WARNING 🚨:
+    - WORK_E_DATE is VARCHAR2(4000) - NEVER use TO_DATE() with it
+    - Use: SUBSTR(WORK_E_DATE, -2) = '25' for year filtering
+    - WORK_S_DATE is TIMESTAMP(6) - can use TO_DATE() with it
+
     1. **DEEP BUSINESS RULES ANALYSIS** 🎯:
        - READ EVERY SINGLE BUSINESS RULE in the ruleset context above
        - UNDERSTAND the formulas, constraints, and logic for each rule
@@ -1074,10 +1097,23 @@ def create_langchain_pipeline():
        - ortalama: (baslangic + bitis) / 2.0
        - turnover_pct: ayrilanlar / ortalama * 100
 
-    3. **STRING NORMALIZATION RULES** 🔤:
+    3. **STRING NORMALIZATION RULES** 🔤 - CRITICAL FOR DATA MATCHING:
+       - ALWAYS use UPPER(TRIM()) for ALL string comparisons to avoid case sensitivity issues
+       - Department names: UPPER(TRIM(DEPARTMENT)) = 'BI ÜRÜN MÜDÜRLÜĞÜ'
+       - Leave types: UPPER(TRIM(IZIN_TURU)) = 'YILLIK İZIN'
+       - Employee names: UPPER(TRIM(AD_SOYAD)) for matching
        - Apply Turkish character normalization: i→İ, ı→I, ç→Ç, ğ→Ğ, ş→Ş, ö→Ö, ü→Ü
-       - Case-insensitive searches for ALL text fields
-       - Normalize both user input AND database values
+       - NEVER use exact case matching for string fields - always normalize
+
+    4. **DATE FORMAT RULES** 📅 - CRITICAL FOR DATE FILTERING - MANDATORY:
+       - WORK_S_DATE: TIMESTAMP(6) type, format: '2020-01-20 00:00:00'
+       - WORK_E_DATE: VARCHAR2(4000) type, format: '2/14/25' (MM/DD/YY)
+       - WORK_S_DATE filtering: TO_DATE('2025-01-01', 'YYYY-MM-DD')
+       - WORK_E_DATE year filtering: SUBSTR(WORK_E_DATE, -2) = '25' (for 2025)
+       - WORK_E_DATE range: WORK_E_DATE BETWEEN '1/1/25' AND '12/31/25'
+       - 🚨 NEVER use TO_DATE() function with WORK_E_DATE field - IT WILL FAIL
+       - 🚨 WORK_E_DATE is STRING, not DATE - use string comparison only
+       - 🚨 Example: WHERE SUBSTR(WORK_E_DATE, -2) = '25' NOT WHERE WORK_E_DATE BETWEEN TO_DATE(...)
 
     4. **NAME MATCHING PRIORITY** 👤:
        - Priority order: KIMLIK_NO > EMP_NO > (UPPER(TRIM(NAME)), UPPER(TRIM(SURNAME)))

@@ -212,6 +212,23 @@ async def get_sessions(request: Request):
         logger.error(f"Error getting sessions: {e}", exc_info=True)
         return JSONResponse(content=[])
 
+@app.delete("/sessions/{session_id}/queries/{query_id}")
+async def delete_query(session_id: str, query_id: str):
+    """Delete a specific query from the database"""
+    logger.info(f"Deleting query {query_id} from session {session_id}")
+    try:
+        from query_history import delete_query_from_db
+        success = delete_query_from_db(query_id)
+        if success:
+            logger.info(f"Successfully deleted query {query_id}")
+            return {"success": True, "message": "Sorgu başarıyla silindi"}
+        else:
+            logger.warning(f"Query {query_id} not found")
+            return {"success": False, "message": "Sorgu bulunamadı"}
+    except Exception as e:
+        logger.error(f"Error deleting query: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail=f"Sorgu silinirken hata oluştu: {str(e)}")
+
 @app.post("/generate-sql", response_model=GenerateSQLResponse)
 async def generate_sql(request: QueryRequest) -> GenerateSQLResponse:
     """Generate SQL query for HR analytics from natural language input using LangChain

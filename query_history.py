@@ -236,5 +236,30 @@ def save_query_history(session_id: str, natural_query: str, sql_query: str, quer
         logger.error(f"Error saving query history: {e}")
         return False
 
+def delete_query_from_db(query_id: str) -> bool:
+    """Delete a specific query from the database"""
+    try:
+        with get_db_connection() as conn:
+            cursor = conn.cursor()
+            
+            # Check if query exists
+            cursor.execute("SELECT id FROM query_history WHERE id = ?", (query_id,))
+            existing = cursor.fetchone()
+            
+            if not existing:
+                logger.warning(f"Query {query_id} not found for deletion")
+                return False
+            
+            # Delete the query
+            cursor.execute("DELETE FROM query_history WHERE id = ?", (query_id,))
+            conn.commit()
+            
+            logger.info(f"Query {query_id} deleted successfully")
+            return True
+            
+    except Exception as e:
+        logger.error(f"Error deleting query {query_id}: {e}")
+        return False
+
 # Initialize database when module is imported
 initialize_history_db() 

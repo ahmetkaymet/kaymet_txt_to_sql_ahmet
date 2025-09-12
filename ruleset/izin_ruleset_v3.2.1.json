@@ -194,8 +194,9 @@
             "İSMAİL ONUR BUMİN",
             "DİREN ARLI",
             "İREM DOĞANAY",
-            "BİROL  UĞURCUKLU ",
-            "OZAN ÇÖKLÜ"
+            "BİROL UĞURCUKLU ",
+            "OZAN ÇÖKLÜ",
+            "İpek tan"
           ],
           "description": "Ad Soyad görüntü alanı. Eşleşmede kullanılmaz."
         },
@@ -208,7 +209,8 @@
             "HR Ürün Müdürlüğü",
             "ERP Üretim Danışmanlığı Departmanı",
             "ERP Yazılım Destek Departmanı",
-            "Satış Pazarlama Müdürlüğü"
+            "Satış Pazarlama Müdürlüğü",
+            "BI Ürün Müdürlüğü"
           ],
           "description": "Departman (organizasyon birimi)."
         },

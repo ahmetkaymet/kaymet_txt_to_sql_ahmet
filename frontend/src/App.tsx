@@ -9,22 +9,11 @@ import {
   useToast,
   Container,
   Heading,
-  Textarea,
-  Badge,
-  Tabs,
-  TabList,
-  TabPanels,
-  Tab,
-  TabPanel,
   IconButton,
   Image,
   Alert,
   AlertIcon,
-  AlertTitle,
-  AlertDescription,
-  Divider,
   Spinner,
-  Stack,
   Code,
   Table,
   Thead,
@@ -49,11 +38,8 @@ import {
   useDisclosure,
   useBreakpointValue
 } from '@chakra-ui/react';
-import { ViewIcon, CopyIcon, CheckIcon, HamburgerIcon, AddIcon, DeleteIcon, RepeatIcon, TriangleUpIcon, ChevronUpIcon, ChevronDownIcon, ArrowUpIcon } from '@chakra-ui/icons';
+import { ViewIcon, CopyIcon, CheckIcon, HamburgerIcon, AddIcon, DeleteIcon, ArrowUpIcon } from '@chakra-ui/icons';
 import axios from 'axios';
-import ReactMarkdown from 'react-markdown';
-import { Prism as SyntaxHighlighter } from 'react-syntax-highlighter';
-import { atomDark } from 'react-syntax-highlighter/dist/esm/styles/prism';
 
 // Plotly import with proper typing
 declare global {
@@ -65,6 +51,7 @@ declare global {
 interface QueryResult {
   id?: string
   natural_query: string
+  user_query?: string // Kullanıcının orijinal sorusu
   sql_query: string
   explanation: string
   results: any[]
@@ -125,17 +112,14 @@ function App() {
   const [result, setResult] = useState<QueryResult | null>(null)
   const [history, setHistory] = useState<HistoryItem[]>([])
   const [loadingHistory, setLoadingHistory] = useState(false)
-  const [activeTab, setActiveTab] = useState(0);
   const [sidebarOpen, setSidebarOpen] = useState(false);
   
-  const [error, setError] = useState<string | null>(null)
-  const { isOpen, onOpen, onClose } = useDisclosure()
+  const { isOpen, onClose } = useDisclosure()
   const toast = useToast()
   
   // Live streaming chat states
   const [chatSteps, setChatSteps] = useState<ChatStep[]>([])
   const [isStreaming, setIsStreaming] = useState(false)
-  const [currentStep, setCurrentStep] = useState<ChatStep | null>(null)
   
   // Responsive sidebar state
   const isDesktop = useBreakpointValue({ base: false, lg: true });
@@ -214,7 +198,7 @@ function App() {
     setLoading(false);
   };
 
-  const handleSubmit = async (e: React.FormEvent, useCrewAI: boolean = false) => {
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     
     if (!query.trim()) return;
@@ -226,7 +210,7 @@ function App() {
     }
     
     const startTime = Date.now();
-    const endpoint = useCrewAI ? 'crew-ai-execute' : 'check-and-execute';
+    const endpoint = 'crew-ai-execute'; // Her zaman CrewAI kullan
     console.log(`🚀 Starting query: "${query.trim()}" with ${endpoint} at ${new Date().toISOString()}`);
     
     setIsStreaming(true);
@@ -234,7 +218,6 @@ function App() {
     // Clear previous chat steps and stop any ongoing typing
     setChatSteps([]);
     setResult(null);
-    setActiveTab(0);
     
     try {
       isFetching.current = true;
@@ -255,7 +238,7 @@ function App() {
       // Yanıt no_data durumundaysa
       if (response.data.status === 'no_data') {
         toast({
-          title: 'No Data Available',
+          title: 'Veri Bulunamadı',
           description: response.data.message,
           status: 'warning',
           duration: 5000,
@@ -265,14 +248,17 @@ function App() {
         return;
       }
       
-      // CrewAI endpoint'i direkt ExecuteSQLResponse döndürür, check-and-execute ise data içinde
-      const resultData = useCrewAI ? response.data : response.data.data;
+      // CrewAI endpoint'i direkt ExecuteSQLResponse döndürür
+      const resultData = response.data;
       console.log('Full response:', response.data);
       console.log('Result data:', resultData);
       console.log('Result data type:', typeof resultData);
       console.log('Result data keys:', resultData ? Object.keys(resultData) : 'No data');
       console.log('Chart data from backend:', resultData?.chart_data);
       console.log('Chart config from backend:', resultData?.chart_config);
+      console.log('Chart data type:', typeof resultData?.chart_data);
+      console.log('Chart data length:', resultData?.chart_data?.length);
+      console.log('Chart data starts with data:image:', resultData?.chart_data?.startsWith('data:image/'));
       
       // Ensure all required fields are present
       const processedResult = {
@@ -291,8 +277,14 @@ function App() {
       console.log('Processed chart_data:', processedResult.chart_data);
       console.log('Processed chart_config:', processedResult.chart_config);
       
-      setResult(processedResult);
-      console.log('Result state set to:', processedResult);
+      // Kullanıcının sorusunu da result'a ekle
+      const resultWithUserQuery = {
+        ...processedResult,
+        user_query: query.trim() // Kullanıcının sorusunu ekle
+      };
+      
+      setResult(resultWithUserQuery);
+      console.log('Result state set to:', resultWithUserQuery);
       console.log('Result state after set:', result); // This will show old value due to React state updates
       setQuery('');
 
@@ -310,8 +302,8 @@ function App() {
       
       // Show success message
       toast({
-        title: 'Query Executed Successfully',
-        description: `Found ${processedResult.results.length} results in ${totalTime}ms (API: ${apiDuration}ms, UI: ${streamingDuration}ms)`,
+        title: 'Sorgu Başarıyla Çalıştırıldı',
+        description: `${processedResult.results.length} sonuç ${totalTime}ms içinde bulundu (API: ${apiDuration}ms, UI: ${streamingDuration}ms)`,
         status: 'success',
         duration: 5000,
         isClosable: true,
@@ -320,8 +312,8 @@ function App() {
     } catch (error: any) {
       console.error('Error details:', error.response?.data || error)
       toast({
-        title: 'Error',
-        description: 'An error occurred while executing the query',
+        title: 'Hata',
+        description: 'Sorgu çalıştırılırken bir hata oluştu',
         status: 'error',
         duration: 3000,
         isClosable: true,
@@ -369,7 +361,15 @@ function App() {
     await new Promise(resolve => setTimeout(resolve, 400))
 
     // Add chart step if available
-    if (queryResult.chart_data && queryResult.chart_data !== 'undefined') {
+    console.log('=== CHART STEP DEBUG ===');
+    console.log('queryResult.chart_data:', queryResult.chart_data);
+    console.log('queryResult.chart_data type:', typeof queryResult.chart_data);
+    console.log('queryResult.chart_data !== undefined:', queryResult.chart_data !== 'undefined');
+    console.log('queryResult.chart_data !== null:', queryResult.chart_data !== null);
+    console.log('Should add chart step:', queryResult.chart_data && queryResult.chart_data !== 'undefined' && queryResult.chart_data !== null);
+    
+    if (queryResult.chart_data && queryResult.chart_data !== 'undefined' && queryResult.chart_data !== null) {
+      console.log('Adding chart step to chat steps');
       setChatSteps(prev => [...prev, {
         type: 'chart',
         content: { 
@@ -379,6 +379,8 @@ function App() {
         status: 'complete',
         timestamp: new Date()
       }])
+    } else {
+      console.log('NOT adding chart step - conditions not met');
     }
   }
 
@@ -410,8 +412,8 @@ function App() {
         } : null);
         
         toast({
-          title: "Chart Generated",
-          description: "Chart generated successfully",
+          title: "Grafik Oluşturuldu",
+          description: "Grafik başarıyla oluşturuldu",
           status: "success",
           duration: 3000,
           isClosable: true,
@@ -419,8 +421,8 @@ function App() {
       } else {
         setResult(prev => prev ? { ...prev, chart_generating: false } : null);
         toast({
-          title: "Chart Generation Failed",
-          description: response.data.message || "Failed to generate chart",
+          title: "Grafik Oluşturulamadı",
+          description: response.data.message || "Grafik oluşturulamadı",
           status: "error",
           duration: 3000,
           isClosable: true,
@@ -430,8 +432,8 @@ function App() {
       console.error('Error generating chart:', error);
       setResult(prev => prev ? { ...prev, chart_generating: false } : null);
       toast({
-        title: "Error",
-        description: "Failed to generate chart",
+        title: "Hata",
+        description: "Grafik oluşturulamadı",
         status: "error",
         duration: 3000,
         isClosable: true,
@@ -483,28 +485,30 @@ function App() {
     
     console.log('Processed query result:', queryResult);
     setResult(queryResult);
-    setActiveTab(0); // AI Analysis tab'ına geç
   };
 
   const renderChart = () => {
+    console.log('=== RENDER CHART DEBUG ===');
     console.log('renderChart called with result:', result);
     console.log('chart_data:', result?.chart_data);
     console.log('chart_data type:', typeof result?.chart_data);
     console.log('chart_data starts with data:image/:', result?.chart_data?.startsWith('data:image/'));
+    console.log('chart_data length:', result?.chart_data?.length);
+    console.log('chart_config:', result?.chart_config);
     
-    if (!result?.chart_data) {
+    if (!result?.chart_data || result.chart_data === 'undefined' || result.chart_data === null) {
       console.log('No chart_data available');
       return (
         <Box textAlign="center" py={8}>
-          <Text color="gray.500" mb={4}>No chart available for this data</Text>
+          <Text color="gray.500" mb={4}>Bu veri için grafik mevcut değil</Text>
           <Button 
             colorScheme="gray" 
             onClick={generateChart}
             leftIcon={<ViewIcon />}
             isLoading={result?.chart_generating}
-            loadingText="Generating..."
+            loadingText="Oluşturuluyor..."
           >
-            Generate Chart
+            Grafik Oluştur
           </Button>
         </Box>
       );
@@ -512,18 +516,20 @@ function App() {
 
     // Check if it's a base64 image or JSON data
     if (result.chart_data.startsWith('data:image/')) {
-      console.log('Rendering PNG image chart');
+      console.log('✅ Rendering PNG image chart');
+      console.log('Chart data length:', result.chart_data.length);
+      console.log('Chart data type:', result.chart_data.substring(0, 50) + '...');
       // PNG image chart
       return (
         <Box>
           <HStack justify="space-between" mb={4}>
-            <Text fontWeight="bold">Data Visualization</Text>
+            <Text fontWeight="bold">Veri Görselleştirme</Text>
             <HStack>
               <Text fontSize="sm" color="gray.600">
-                Type: {result.chart_config?.chart_type || 'Unknown'}
+                Tip: {result.chart_config?.chart_type || 'Bilinmiyor'}
               </Text>
               <IconButton
-                aria-label="Generate new chart"
+                aria-label="Yeni grafik oluştur"
                 icon={<ViewIcon />}
                 size="sm"
                 onClick={generateChart}
@@ -541,11 +547,23 @@ function App() {
             <Image 
               src={result.chart_data} 
               alt="Data Chart"
-              w="full"
-              h="auto"
+              width="100%"
+              height="400px"
+              objectFit="contain"
               cursor="pointer"
-              onClick={onOpen}
+              onClick={() => {
+                // Open in new tab
+                window.open(result.chart_data, '_blank');
+              }}
               _hover={{ opacity: 0.8 }}
+              onError={(e) => {
+                console.error('Image load error:', e);
+                console.error('Chart data length:', result.chart_data?.length);
+                console.error('Chart data starts with:', result.chart_data?.substring(0, 100));
+              }}
+              onLoad={() => {
+                console.log('✅ Image loaded successfully');
+              }}
             />
           </Box>
           
@@ -565,13 +583,13 @@ function App() {
         return (
           <Box>
             <HStack justify="space-between" mb={4}>
-              <Text fontWeight="bold">Data Visualization</Text>
+              <Text fontWeight="bold">Veri Görselleştirme</Text>
               <HStack>
                 <Text fontSize="sm" color="gray.600">
-                  Type: {chartInfo.chart_type || 'Unknown'}
+                  Tip: {chartInfo.chart_type || 'Bilinmiyor'}
                 </Text>
                 <IconButton
-                  aria-label="Generate new chart"
+                  aria-label="Yeni grafik oluştur"
                   icon={<ViewIcon />}
                   size="sm"
                   onClick={generateChart}
@@ -590,13 +608,13 @@ function App() {
               <VStack spacing={4} align="stretch">
                 <Text fontWeight="bold" fontSize="lg">{chartInfo.title}</Text>
                 <Text fontSize="sm" color="gray.600">
-                  Data Points: {chartInfo.data_points} | Columns: {chartInfo.columns?.join(', ')}
+                  Veri Noktaları: {chartInfo.data_points} | Sütunlar: {chartInfo.columns?.join(', ')}
                 </Text>
                 
                 {chartInfo.fallback && (
                   <Alert status="info">
                     <AlertIcon />
-                    <Text fontSize="sm">Using Plotly.js rendering (PNG export failed)</Text>
+                    <Text fontSize="sm">Plotly.js render kullanılıyor (PNG dışa aktarma başarısız)</Text>
                   </Alert>
                 )}
                 
@@ -612,7 +630,7 @@ function App() {
                   alignItems="center"
                   justifyContent="center"
                 >
-                  <Text color="gray.500">Chart loading...</Text>
+                  <Text color="gray.500">Grafik yükleniyor...</Text>
                 </Box>
               </VStack>
             </Box>
@@ -628,13 +646,13 @@ function App() {
         console.error('Error parsing chart data:', error);
         return (
           <Box textAlign="center" py={8}>
-            <Text color="red.500" mb={4}>Error rendering chart</Text>
+            <Text color="red.500" mb={4}>Grafik render edilirken hata</Text>
             <Button 
               colorScheme="gray" 
               onClick={generateChart}
               leftIcon={<ViewIcon />}
             >
-              Regenerate Chart
+              Grafiği Yeniden Oluştur
             </Button>
           </Box>
         );
@@ -673,28 +691,42 @@ function App() {
 
   const deleteQuery = async (sessionId: string, queryId: string) => {
     try {
-      // Backend'de silme endpoint'i yoksa, sadece frontend'den kaldır
-      setHistory(prev => prev.map(session => {
-        if (session.id === sessionId) {
-          return {
-            ...session,
-            queries: session.queries.filter(q => q.id !== queryId)
-          };
-        }
-        return session;
-      }).filter(session => session.queries.length > 0));
+      // Backend'e silme isteği gönder
+      const response = await axios.delete(`${API_URL}/sessions/${sessionId}/queries/${queryId}`);
       
-      toast({
-        title: "Query deleted",
-        description: "Query has been removed from history",
-        status: "success",
-        duration: 2000,
-        isClosable: true,
-      });
+      if (response.data.success) {
+        // Frontend'den de kaldır
+        setHistory(prev => prev.map(session => {
+          if (session.id === sessionId) {
+            return {
+              ...session,
+              queries: session.queries.filter(q => q.id !== queryId)
+            };
+          }
+          return session;
+        }).filter(session => session.queries.length > 0));
+        
+        toast({
+          title: "Sorgu Silindi",
+          description: "Sorgu geçmişten başarıyla kaldırıldı",
+          status: "success",
+          duration: 2000,
+          isClosable: true,
+        });
+      } else {
+        toast({
+          title: "Hata",
+          description: response.data.message || "Sorgu silinemedi",
+          status: "error",
+          duration: 3000,
+          isClosable: true,
+        });
+      }
     } catch (error) {
+      console.error('Error deleting query:', error);
       toast({
-        title: "Error",
-        description: "Failed to delete query",
+        title: "Hata",
+        description: "Sorgu silinirken bir hata oluştu",
         status: "error",
         duration: 3000,
         isClosable: true,
@@ -710,11 +742,11 @@ function App() {
     yesterday.setDate(yesterday.getDate() - 1);
     
     const groups: { [key: string]: HistoryItem[] } = {
-      'Today': [],
-      'Yesterday': [],
-      'This Week': [],
-      'This Month': [],
-      'Older': []
+      'Bugün': [],
+      'Dün': [],
+      'Bu Hafta': [],
+      'Bu Ay': [],
+      'Daha Eski': []
     };
     
     history.forEach(session => {
@@ -726,15 +758,15 @@ function App() {
         const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
         
         if (diffDays === 0) {
-          groups['Today'].push({ ...session, queries: [query] });
+          groups['Bugün'].push({ ...session, queries: [query] });
         } else if (diffDays === 1) {
-          groups['Yesterday'].push({ ...session, queries: [query] });
+          groups['Dün'].push({ ...session, queries: [query] });
         } else if (diffDays <= 7) {
-          groups['This Week'].push({ ...session, queries: [query] });
+          groups['Bu Hafta'].push({ ...session, queries: [query] });
         } else if (diffDays <= 30) {
-          groups['This Month'].push({ ...session, queries: [query] });
+          groups['Bu Ay'].push({ ...session, queries: [query] });
         } else {
-          groups['Older'].push({ ...session, queries: [query] });
+          groups['Daha Eski'].push({ ...session, queries: [query] });
         }
       });
     });
@@ -840,7 +872,7 @@ function App() {
                   _hover={{ bg: "gray.100" }}
                 />
                 <IconButton
-                  aria-label="New Chat"
+                  aria-label="Yeni Sohbet"
                   icon={<AddIcon />}
                   onClick={handleNewChat}
                   variant="ghost"
@@ -872,12 +904,12 @@ function App() {
                         _hover={{ bg: "gray.100" }}
                       />
                       <Text fontSize="lg" fontWeight="medium" color="gray.800">
-                        Chat History
+                        Sohbet Geçmişi
                       </Text>
                     </HStack>
                     <HStack spacing={2}>
                       <IconButton
-                        aria-label="New Chat"
+                        aria-label="Yeni Sohbet"
                         icon={<AddIcon />}
                         onClick={handleNewChat}
                         variant="ghost"
@@ -894,7 +926,7 @@ function App() {
                   {loadingHistory ? (
                     <VStack spacing={4} py={8}>
                       <Spinner size="md" color="red.500" />
-                      <Text fontSize="sm" color="gray.600">Loading history...</Text>
+                      <Text fontSize="sm" color="gray.600">Geçmiş yükleniyor...</Text>
                     </VStack>
                   ) : history.length > 0 ? (
                     <VStack spacing={4} align="stretch">
@@ -952,20 +984,23 @@ function App() {
                                     
                                     {/* Delete Button */}
                                     <IconButton
-                                      aria-label="Delete query"
+                                      aria-label="Sorguyu sil"
                                       icon={<DeleteIcon />}
                                       size="xs"
                                       variant="ghost"
-                                      colorScheme="gray"
-                                      opacity={0}
-                                      _groupHover={{ opacity: 1 }}
+                                      colorScheme="red"
+                                      opacity={0.6}
+                                      _hover={{ 
+                                        opacity: 1,
+                                        bg: "red.50",
+                                        color: "red.600"
+                                      }}
                                       onClick={(e) => {
                                         e.stopPropagation();
                                         if (item.id && item.queries[0].id) {
                                           deleteQuery(item.id, item.queries[0].id);
                                         }
                                       }}
-                                      _hover={{ bg: "gray.100" }}
                                     />
                                   </HStack>
                                   
@@ -979,10 +1014,10 @@ function App() {
                   ) : (
                     <Box textAlign="center" py={8}>
                       <Text color="gray.500" fontSize="sm">
-                        No queries yet
+                        Henüz sorgu yok
                       </Text>
                       <Text color="gray.400" fontSize="xs">
-                        Start asking questions to see history
+                        Geçmişi görmek için soru sormaya başlayın
                       </Text>
                     </Box>
                   )}
@@ -997,25 +1032,6 @@ function App() {
           <Container maxW="6xl" py={6}>
         <VStack spacing={6} align="stretch">
 
-          {/* Error Display */}
-          {error && (
-            <Box
-              bg="red.50"
-              borderRadius="xl"
-              p={6}
-              border="1px"
-              borderColor="red.200"
-              mb={6}
-            >
-              <Alert status="error" borderRadius="lg">
-                <AlertIcon />
-                <Box>
-                  <AlertTitle>Error!</AlertTitle>
-                  <AlertDescription>{error}</AlertDescription>
-                </Box>
-              </Alert>
-            </Box>
-          )}
 
           {/* AImet Welcome Message - Only show when no results */}
           {!result && !loading && (
@@ -1039,26 +1055,26 @@ function App() {
                     h={24}
                   />
                   <Heading size="lg" color="gray.800" fontWeight="medium">
-                    Hey, I'm AImet!
+                    Merhaba, Ben AImet!
                   </Heading>
                 </HStack>
                 
                 <Text fontSize="md" color="gray.600" textAlign="center">
-                  How can I help you today? Ask me anything about your HR data and I'll analyze it for you.
+                  Bugün size nasıl yardımcı olabilirim? İK verileriniz hakkında herhangi bir şey sorun, analiz edeyim.
                 </Text>
                 
                 {/* Example Queries */}
                 <VStack spacing={4} w="full" maxW="2xl">
                   <Text fontSize="sm" color="gray.500" fontWeight="medium" textTransform="uppercase" letterSpacing="wide">
-                    Try these examples:
+                    Bu örnekleri deneyin:
                   </Text>
                   <VStack spacing={3} w="full">
                     {[
-                      "Show me employee count by department",
-                      "What's the average salary by job title?",
-                      "Which employees have the highest engagement scores?",
-                      "How many people were hired last month?",
-                      "What's the training completion rate by team?"
+                      "Departmana göre çalışan sayısını göster",
+                      "Pozisyona göre ortalama maaş nedir?",
+                      "En yüksek bağlılık puanına sahip çalışanlar kimler?",
+                      "Geçen ay kaç kişi işe alındı?",
+                      "Takıma göre eğitim tamamlama oranı nedir?"
                     ].map((example, index) => (
                       <Button
                         key={index}
@@ -1102,10 +1118,10 @@ function App() {
                 <Spinner size="xl" color="gray.500" thickness="3px" />
                 <VStack spacing={2}>
                   <Text fontSize="xl" fontWeight="medium" color="gray.800">
-                    Analyzing your query with AI
+                    Sorgunuz AI ile analiz ediliyor
                   </Text>
                   <Text fontSize="sm" color="gray.600">
-                    This may take a few moments...
+                    Bu işlem birkaç dakika sürebilir...
                   </Text>
                 </VStack>
               </VStack>
@@ -1145,10 +1161,10 @@ function App() {
                         flexShrink={0}
                       />
                       <Text fontSize="sm" fontWeight="medium" color="gray.700" textTransform="uppercase" letterSpacing="wide">
-                        {step.type === 'explanation' && 'Analysis'}
-                        {step.type === 'sql' && 'SQL Query'}
-                        {step.type === 'results' && 'Data'}
-                        {step.type === 'chart' && 'Chart'}
+                        {step.type === 'explanation' && 'Analiz'}
+                        {step.type === 'sql' && 'SQL Sorgusu'}
+                        {step.type === 'results' && 'Veri'}
+                        {step.type === 'chart' && 'Grafik'}
                       </Text>
                       {step.status === 'loading' && (
                         <Spinner size="sm" color="gray.500" />
@@ -1183,7 +1199,7 @@ function App() {
                     {step.type === 'results' && (
                       <Box>
                         <Text fontSize="sm" color="gray.600" mb={3}>
-                          {step.content.length} rows returned
+                          {step.content.length} satır döndürüldü
                         </Text>
                         <Box
                           bg="gray.50"
@@ -1222,16 +1238,22 @@ function App() {
                           <Image 
                             src={step.content.chart_data} 
                             alt="Data Chart"
-                            w="full"
-                            h="auto"
+                            width="100%"
+                            height="300px"
                             borderRadius="md"
-                            maxH="200px"
                             objectFit="contain"
+                            onError={(e) => {
+                              console.error('Chat step image load error:', e);
+                              console.error('Chart data length:', step.content.chart_data?.length);
+                            }}
+                            onLoad={() => {
+                              console.log('✅ Chat step image loaded successfully');
+                            }}
                           />
                         ) : step.content.chart_data ? (
-                          <Text color="gray.600" fontSize="sm">Chart data available</Text>
+                          <Text color="gray.600" fontSize="sm">Grafik verisi mevcut</Text>
                         ) : (
-                          <Text color="gray.600" fontSize="sm">Chart not generated yet</Text>
+                          <Text color="gray.600" fontSize="sm">Grafik henüz oluşturulmadı</Text>
                         )}
                       </Box>
                     )}
@@ -1256,7 +1278,7 @@ function App() {
                   {/* Chat-like Results Display */}
                   <Box p={4}>
                     <VStack spacing={4} align="stretch">
-                      {/* User Message */}
+                      {/* User Message - Always show the user's question */}
                       <Box
                         alignSelf="flex-end"
                         maxW="75%"
@@ -1268,10 +1290,10 @@ function App() {
                       >
                         <VStack spacing={1} align="end">
                           <Text fontSize="sm" fontWeight="medium">
-                            {result.natural_query}
+                            {result.user_query || result.natural_query}
                           </Text>
                           <Text fontSize="xs" color="red.100">
-                            {new Date(result.timestamp).toLocaleString()}
+                            {new Date(result.timestamp).toLocaleString('tr-TR')}
                           </Text>
                         </VStack>
                       </Box>
@@ -1298,7 +1320,7 @@ function App() {
                             flexShrink={0}
                           />
                           <Text fontSize="sm" fontWeight="medium" color="gray.700" textTransform="uppercase" letterSpacing="wide">
-                            Analysis
+                            Analiz
                           </Text>
                         </HStack>
                         <Text color="gray.700" fontSize="md" lineHeight="1.5">
@@ -1329,27 +1351,27 @@ function App() {
                               flexShrink={0}
                             />
                             <Text fontSize="sm" fontWeight="medium" color="gray.700" textTransform="uppercase" letterSpacing="wide">
-                              SQL Query
+                              SQL Sorgusu
                             </Text>
                           </HStack>
-                          <Button
-                            size="sm"
-                            variant="ghost"
-                            colorScheme="gray"
-                            onClick={() => {
-                              navigator.clipboard.writeText(result.sql_query);
-                              toast({
-                                title: "SQL copied!",
-                                description: "SQL query copied to clipboard",
-                                status: "success",
-                                duration: 2000,
-                                isClosable: true,
-                              });
-                            }}
-                            leftIcon={<Icon as={CopyIcon} />}
-                          >
-                            Copy
-                          </Button>
+                            <Button
+                              size="sm"
+                              variant="ghost"
+                              colorScheme="gray"
+                              onClick={() => {
+                                navigator.clipboard.writeText(result.sql_query);
+                                toast({
+                                  title: "SQL Kopyalandı!",
+                                  description: "SQL sorgusu panoya kopyalandı",
+                                  status: "success",
+                                  duration: 2000,
+                                  isClosable: true,
+                                });
+                              }}
+                              leftIcon={<Icon as={CopyIcon} />}
+                            >
+                              Kopyala
+                            </Button>
                         </HStack>
                         <Box
                           bg="gray.50"
@@ -1388,7 +1410,7 @@ function App() {
                             flexShrink={0}
                           />
                           <Text fontSize="sm" fontWeight="medium" color="gray.700" textTransform="uppercase" letterSpacing="wide">
-                            Data Results ({result.results ? result.results.length : 0} rows)
+                            Veri Sonuçları ({result.results ? result.results.length : 0} satır)
                           </Text>
                         </HStack>
                         
@@ -1425,7 +1447,7 @@ function App() {
                           </Box>
                         ) : (
                           <Text color="gray.500" fontSize="sm">
-                            No results found for this query
+                            Bu sorgu için sonuç bulunamadı
                           </Text>
                         )}
                       </Box>
@@ -1453,7 +1475,7 @@ function App() {
                               flexShrink={0}
                             />
                             <Text fontSize="sm" fontWeight="medium" color="gray.700" textTransform="uppercase" letterSpacing="wide">
-                              Chart
+                              Grafik
                             </Text>
                           </HStack>
                           {renderChart()}
@@ -1482,7 +1504,7 @@ function App() {
             <HStack 
               spacing={3} 
               as="form" 
-              onSubmit={(e) => handleSubmit(e, false)}
+              onSubmit={handleSubmit}
               bg="white"
               p={4}
               borderRadius="2xl"
@@ -1491,7 +1513,7 @@ function App() {
               boxShadow="0 4px 20px rgba(0, 0, 0, 0.08)"
             >
               <Input
-                placeholder="Ask me anything about your HR data..."
+                placeholder="İK verileriniz hakkında herhangi bir şey sorun..."
                 value={query}
                 onChange={(e) => setQuery(e.target.value)}
                 size="lg"
@@ -1503,14 +1525,14 @@ function App() {
                   boxShadow: "0 0 0 3px rgba(0, 0, 0, 0.05)"
                 }}
                 _hover={{ borderColor: "gray.300" }}
-                onKeyPress={(e) => e.key === 'Enter' && handleSubmit(e, false)}
+                onKeyPress={(e) => e.key === 'Enter' && handleSubmit(e)}
                 bg="white"
                 flex={1}
                 fontSize="md"
               />
               <Button
                 type="submit"
-                colorScheme="gray"
+                colorScheme="red"
                 size="lg"
                 px={6}
                 py={5}
@@ -1519,7 +1541,7 @@ function App() {
                 borderRadius="xl"
                 boxShadow="0 2px 8px rgba(0, 0, 0, 0.1)"
                 isLoading={loading}
-                loadingText="Executing..."
+                loadingText="Çalıştırılıyor..."
                 _hover={{
                   transform: "translateY(-1px)",
                   boxShadow: "0 4px 15px rgba(0, 0, 0, 0.15)"
@@ -1527,27 +1549,6 @@ function App() {
                 transition="all 0.2s"
               >
                 <Icon as={ArrowUpIcon} />
-              </Button>
-              <Button
-                onClick={(e) => handleSubmit(e, true)}
-                colorScheme="blue"
-                size="lg"
-                px={6}
-                py={5}
-                fontSize="md"
-                fontWeight="medium"
-                borderRadius="xl"
-                boxShadow="0 2px 8px rgba(0, 0, 0, 0.1)"
-                isLoading={loading}
-                loadingText="CrewAI..."
-                _hover={{
-                  transform: "translateY(-1px)",
-                  boxShadow: "0 4px 15px rgba(0, 0, 0, 0.15)"
-                }}
-                transition="all 0.2s"
-                title="Use CrewAI Multi-Agent System"
-              >
-                🤖
               </Button>
             </HStack>
           </Container>
@@ -1565,13 +1566,13 @@ function App() {
         <DrawerContent>
           <DrawerCloseButton />
           <DrawerHeader bg="gray.50" borderBottom="1px" borderColor="gray.100">
-            <Text color="gray.800" fontWeight="medium">Chat History</Text>
+            <Text color="gray.800" fontWeight="medium">Sohbet Geçmişi</Text>
           </DrawerHeader>
           <DrawerBody p={4}>
             {loadingHistory ? (
               <VStack spacing={4} py={8}>
                 <Spinner size="md" color="gray.500" />
-                <Text fontSize="sm" color="gray.600">Loading history...</Text>
+                <Text fontSize="sm" color="gray.600">Geçmiş yükleniyor...</Text>
               </VStack>
             ) : history.length > 0 ? (
               <VStack spacing={0} align="stretch">
@@ -1630,20 +1631,23 @@ function App() {
                               
                               {/* Delete Button */}
                               <IconButton
-                                aria-label="Delete query"
+                                aria-label="Sorguyu sil"
                                 icon={<DeleteIcon />}
                                 size="xs"
                                 variant="ghost"
-                                colorScheme="gray"
-                                opacity={0}
-                                _groupHover={{ opacity: 1 }}
+                                colorScheme="red"
+                                opacity={0.6}
+                                _hover={{ 
+                                  opacity: 1,
+                                  bg: "red.50",
+                                  color: "red.600"
+                                }}
                                 onClick={(e) => {
                                   e.stopPropagation();
                                   if (item.id && item.queries[0].id) {
                                     deleteQuery(item.id, item.queries[0].id);
                                   }
                                 }}
-                                _hover={{ bg: "gray.100" }}
                               />
                             </HStack>
                           </Box>
@@ -1656,10 +1660,10 @@ function App() {
             ) : (
               <Box textAlign="center" py={8}>
                 <Text color="gray.500" fontSize="sm">
-                  No queries yet
+                  Henüz sorgu yok
                 </Text>
                 <Text color="gray.400" fontSize="xs">
-                  Start asking questions to see history
+                  Geçmişi görmek için soru sormaya başlayın
                 </Text>
               </Box>
             )}
@@ -1671,7 +1675,7 @@ function App() {
       <Modal isOpen={isOpen} onClose={onClose} size="6xl">
         <ModalOverlay />
         <ModalContent>
-          <ModalHeader bg="gray.50" color="gray.800" borderBottom="1px" borderColor="gray.100">Data Visualization</ModalHeader>
+          <ModalHeader bg="gray.50" color="gray.800" borderBottom="1px" borderColor="gray.100">Veri Görselleştirme</ModalHeader>
           <ModalCloseButton color="gray.600" />
           <ModalBody pb={6} pt={4}>
             {result?.chart_data && (
