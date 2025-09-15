@@ -796,7 +796,7 @@ function App() {
                       <HStack justify="space-between" align="flex-start">
                             <HStack spacing={0} align="flex-start" ml={-10} pt={0} mt={-2}>
                 <Image
-                  src="/assets/BilişimAI logo-Photoroom.png"
+                  src="/assets/247b5df2eca666f9b7fc7d57907d4bd041dea7afba62f9f0f8b22e8e9e285702.png"
                   alt="BilişimAI Logo"
                   h="72px"
                   w="auto"

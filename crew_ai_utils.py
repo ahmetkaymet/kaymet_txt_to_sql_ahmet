@@ -13,12 +13,46 @@ from dataclasses import dataclass
 from enum import Enum
 from datetime import datetime
 
+# Clear any proxy environment variables that might cause issues
+for proxy_var in ['HTTP_PROXY', 'HTTPS_PROXY', 'http_proxy', 'https_proxy']:
+    if proxy_var in os.environ:
+        del os.environ[proxy_var]
+
 from crewai import Agent, Task, Crew, Process
-from langchain_openai import ChatOpenAI
 from langchain_core.prompts import PromptTemplate
 from dotenv import load_dotenv
 
 load_dotenv()
+
+# Custom ChatOpenAI wrapper to avoid proxy issues
+class SafeChatOpenAI:
+    def __init__(self, model="gpt-4o-mini", temperature=0.1, api_key=None, **kwargs):
+        # Import here to avoid circular imports and proxy issues
+        from langchain_openai import ChatOpenAI
+        
+        # Create a clean client without any proxy settings
+        try:
+            self.client = ChatOpenAI(
+                model=model,
+                temperature=temperature,
+                api_key=api_key,
+                # Explicitly avoid any proxy-related parameters
+                timeout=60.0
+            )
+        except Exception as e:
+            logger.error(f"Error creating ChatOpenAI client: {e}")
+            # Fallback to basic initialization
+            self.client = ChatOpenAI(
+                model=model,
+                temperature=temperature,
+                api_key=api_key
+            )
+    
+    def __getattr__(self, name):
+        return getattr(self.client, name)
+
+# Use our safe wrapper instead of direct ChatOpenAI
+ChatOpenAI = SafeChatOpenAI
 
 logger = logging.getLogger(__name__)
 
